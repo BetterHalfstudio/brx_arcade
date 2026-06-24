@@ -1,8 +1,24 @@
 # BRX_ARCADE
 
-A fully client-side, static pixel-art processing tool. Drop a PNG onto a fixed
-**600×450** canvas, position/scale it, run it through a **dither → color → CRT**
-pipeline, and export a PNG. No backend — builds to static files.
+Two pixel-art tools under one shell, linked by the `BRX_ARCADE` title (hash
+routes; no SPA rewrite needed):
+
+- **DITHER** (`/`) — drop a PNG onto a fixed **600×450** canvas, position/scale
+  it, run it through a **dither → color → CRT** pipeline, export a PNG. Fully
+  client-side.
+- **FACE** (`#/face`) — webcam/upload a face → **Gemini** redraws it as a
+  caricature → the deterministic **pixel-lock** finisher (downscale + palette +
+  dither) normalizes it to a consistent BRX look → export a transparent PNG.
+
+The FACE tool's AI step is the only server piece: a Vercel serverless function
+(`api/stylize.ts`) proxies Gemini so the API key never reaches the browser.
+
+## Setup for the FACE tool
+
+Set `GEMINI_API_KEY` in **Vercel → Project → Settings → Environment Variables**
+(and redeploy). For local AI testing run the function with `vercel dev` and a
+`.env` (see `.env.example`); plain `npm run dev` serves the UI but not `/api/*`,
+so the deterministic preview works while the AI call won't.
 
 ## Run
 

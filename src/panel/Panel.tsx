@@ -81,17 +81,6 @@ export function Panel({
 
   return (
     <aside className="panel">
-      <div className="brand">
-        <h1>
-          <span className="br">BRX</span>_ARCADE
-        </h1>
-        <span className="blip">
-          <i />
-          <i />
-          <i />
-        </span>
-      </div>
-
       <div className="toolbar">
         <button className="key cream block" onClick={onAddImage}>
           ＋ ADD IMAGE

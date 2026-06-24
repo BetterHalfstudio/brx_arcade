@@ -232,7 +232,6 @@ export function CanvasStage({
             <div>
               <div className="glyph">▦</div>
               <div className="big">DROP A PNG</div>
-              <div className="sub">600 × 450 · NEAREST · CLIENT-SIDE</div>
             </div>
           </div>
         )}

@@ -46,8 +46,22 @@ button {
 /* ============================================================================
    APP SHELL
    ============================================================================ */
-.app {
+.shell {
   display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.app {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
   width: 100%;
   background: radial-gradient(
@@ -56,6 +70,139 @@ button {
       transparent 50%
     ),
     var(--bg);
+}
+
+/* ============================================================================
+   TOP NAV (links the two tools)
+   ============================================================================ */
+.nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 42px;
+  padding: 0 14px;
+  background: var(--panel-bg);
+  border-bottom: var(--hairline) solid var(--line);
+  z-index: 5;
+}
+.nav__brand {
+  font-size: 16px;
+  letter-spacing: 0.14em;
+  color: var(--text);
+  text-decoration: none;
+}
+.nav__brand .br {
+  color: var(--accent-2);
+}
+.nav__tabs {
+  display: flex;
+  gap: 4px;
+}
+.nav__tab {
+  font-size: var(--fs-small);
+  letter-spacing: var(--letter-wide);
+  color: var(--text-mute);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+}
+.nav__tab:hover {
+  color: var(--text-dim);
+  background: var(--panel-raised);
+}
+.nav__tab.active {
+  color: var(--col-bg);
+  background: var(--accent);
+}
+.nav .blip {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.nav .blip i {
+  width: 7px;
+  height: 11px;
+  display: block;
+  background: var(--col-grey);
+}
+.nav .blip i:nth-child(1) {
+  background: var(--accent);
+}
+.nav .blip i:nth-child(2) {
+  background: var(--accent-2);
+}
+
+/* generic note (used outside .export too) */
+.note {
+  font-size: var(--fs-micro);
+  color: var(--text-mute);
+  letter-spacing: var(--letter);
+  text-transform: none;
+  line-height: 1.4;
+}
+.note.err {
+  color: var(--accent-2);
+}
+
+/* ============================================================================
+   FACE TOOL
+   ============================================================================ */
+.fgroup {
+  padding: 11px var(--pad);
+  border-bottom: var(--hairline) solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.fgroup .ttl {
+  font-size: var(--fs-head);
+  color: var(--text-dim);
+  letter-spacing: var(--letter-wide);
+}
+.prompt {
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+  background: var(--col-bg-2);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-small);
+  letter-spacing: var(--letter);
+  line-height: 1.45;
+  padding: 7px;
+  text-transform: none;
+}
+.prompt:focus {
+  outline: none;
+  border-color: var(--col-teal-deep);
+}
+.stage__frame.face {
+  min-width: 320px;
+  min-height: 300px;
+  width: auto;
+  height: auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--col-bg);
+}
+.face__video,
+.face__preview {
+  height: min(72vh, 620px);
+  width: auto;
+  max-width: 100%;
+  display: block;
+}
+.face__video {
+  transform: scaleX(-1); /* mirror the selfie preview */
+}
+.face__preview {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 /* ---- Left panel ---------------------------------------------------------- */
