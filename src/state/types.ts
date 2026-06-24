@@ -6,8 +6,8 @@
 // free multiplier on the image's natural size (1 = native pixels).
 // ============================================================================
 
-export const CANVAS_W = 800;
-export const CANVAS_H = 600;
+export const CANVAS_W = 600;
+export const CANVAS_H = 450;
 
 export type DitherType = "fs" | "bayer2" | "bayer4" | "bayer8";
 
@@ -16,7 +16,7 @@ export interface Layer {
   /** natural pixel size of the source image */
   naturalW: number;
   naturalH: number;
-  /** center position in 800x600 source space */
+  /** center position in source space (CANVAS_W x CANVAS_H) */
   x: number;
   y: number;
   /** free scale multiplier on natural size */
@@ -25,11 +25,12 @@ export interface Layer {
 
 export interface DitherState {
   type: DitherType;
+  /** pixelation block edge: 1 = native, 2 = 2x2 blocks, etc. */
+  pixelSize: number;
   blackPoint: number; // 0..255  (pre-levels)
   whitePoint: number; // 0..255
   gamma: number; // 0.1..3.0
-  threshold: number; // 0..255  (active only when color is OFF)
-  colorOn: boolean;
+  threshold: number; // 0..255  (B&W 1-bit cutoff)
 }
 
 export interface GradientStop {
@@ -38,11 +39,20 @@ export interface GradientStop {
 }
 
 export interface ColorState {
-  palette: string[]; // hex list the dither snaps to (feeds stage 3)
+  /** ON = keep the image's original colors; OFF = black & white base */
+  originalColors: boolean;
+  /** recolor mode A: snap the dither to `palette` (exclusive with gradient) */
+  paletteOn: boolean;
+  /** recolor mode B: gradient map by luminance (exclusive with palette) */
   gradientMapOn: boolean;
+  palette: string[]; // colors the dither snaps to (2 max when B&W)
   gradientStops: GradientStop[];
   background: string; // hex
 }
+
+/** Max palette entries: a duotone pair in B&W, otherwise a fuller set. */
+export const PALETTE_MAX_BW = 2;
+export const PALETTE_MAX = 16;
 
 export interface CRTState {
   on: boolean; // OFF by default

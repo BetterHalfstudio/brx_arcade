@@ -1,11 +1,12 @@
 import { useState } from "react";
 import type { StoreApi } from "../state/store";
 import type { DitherType } from "../state/types";
+import { PALETTE_MAX, PALETTE_MAX_BW } from "../state/types";
 import { isValidHex } from "../util/color";
 import { Section, Slider, Toggle, Segmented } from "./controls";
 
-// Left panel. Title → three collapsible dropdowns (all collapsed on load) →
-// export controls → muted roadmap. Compact, unobtrusive chrome.
+// Left panel. Title → Add Image → three collapsible dropdowns (all collapsed
+// on load) → muted roadmap → export pinned at the bottom.
 
 const DITHERS: { value: DitherType; label: string }[] = [
   { value: "fs", label: "FS" },
@@ -14,12 +15,21 @@ const DITHERS: { value: DitherType; label: string }[] = [
   { value: "bayer8", label: "B8" },
 ];
 
+const PIXEL_SIZES: { value: string; label: string }[] = [
+  { value: "1", label: "1×" },
+  { value: "2", label: "2×" },
+  { value: "4", label: "4×" },
+  { value: "8", label: "8×" },
+];
+
 export function Panel({
   store,
   onExport,
+  onAddImage,
 }: {
   store: StoreApi;
   onExport: () => void;
+  onAddImage: () => void;
 }) {
   const { state, setDither, setColor, setCRT, patch } = store;
   const [open, setOpen] = useState({
@@ -35,31 +45,38 @@ export function Panel({
   const c = state.color;
   const crt = state.crt;
 
+  // pure black & white only when no recolor is active
+  const bwMode = !c.originalColors && !c.paletteOn && !c.gradientMapOn;
+  const paletteMax = c.originalColors ? PALETTE_MAX : PALETTE_MAX_BW;
+
   // ---- palette helpers ----
   const setPaletteAt = (i: number, hex: string) =>
     setColor({ palette: c.palette.map((p, j) => (j === i ? hex : p)) });
   const removePalette = (i: number) =>
     setColor({ palette: c.palette.filter((_, j) => j !== i) });
   const addPalette = () =>
+    c.palette.length < paletteMax &&
     setColor({ palette: [...c.palette, c.palette[c.palette.length - 1] ?? "#ffffff"] });
+
+  // ---- mutually-exclusive recolor toggles ----
+  const setOriginal = (v: boolean) =>
+    setColor({ originalColors: v, palette: v ? c.palette : c.palette.slice(0, PALETTE_MAX_BW) });
+  const setPaletteOn = (v: boolean) =>
+    setColor({ paletteOn: v, gradientMapOn: v ? false : c.gradientMapOn });
+  const setGradientOn = (v: boolean) =>
+    setColor({ gradientMapOn: v, paletteOn: v ? false : c.paletteOn });
 
   // ---- gradient stop helpers ----
   const stops = c.gradientStops;
-  const setStop = (i: number, patchStop: Partial<{ pos: number; color: string }>) =>
-    setColor({
-      gradientStops: stops.map((st, j) => (j === i ? { ...st, ...patchStop } : st)),
-    });
+  const setStop = (i: number, p: Partial<{ pos: number; color: string }>) =>
+    setColor({ gradientStops: stops.map((st, j) => (j === i ? { ...st, ...p } : st)) });
   const addStop = () =>
     setColor({ gradientStops: [...stops, { pos: 1, color: "#ffffff" }] });
   const removeStop = (i: number) =>
-    stops.length > 2 &&
-    setColor({ gradientStops: stops.filter((_, j) => j !== i) });
+    stops.length > 2 && setColor({ gradientStops: stops.filter((_, j) => j !== i) });
   const gradientCss =
     "linear-gradient(90deg," +
-    [...stops]
-      .sort((a, b) => a.pos - b.pos)
-      .map((s) => `${s.color} ${Math.round(s.pos * 100)}%`)
-      .join(",") +
+    [...stops].sort((a, b) => a.pos - b.pos).map((s) => `${s.color} ${Math.round(s.pos * 100)}%`).join(",") +
     ")";
 
   return (
@@ -75,22 +92,34 @@ export function Panel({
         </span>
       </div>
 
+      <div className="toolbar">
+        <button className="key cream block" onClick={onAddImage}>
+          ＋ ADD IMAGE
+        </button>
+      </div>
+
       {/* 1 — PIXELIZE / DITHER ------------------------------------------------ */}
       <Section
         index="01"
         title="PIXELIZE / DITHER"
         open={open.dither}
         onToggle={() => toggle("dither")}
-        pip={d.colorOn ? "on" : "off"}
       >
         <div className="ctl">
           <div className="ctl__label">
             <span>DITHER</span>
           </div>
+          <Segmented value={d.type} options={DITHERS} onChange={(t) => setDither({ type: t })} />
+        </div>
+        <div className="ctl">
+          <div className="ctl__label">
+            <span>PIXEL SIZE</span>
+            <span className="val">{d.pixelSize}×</span>
+          </div>
           <Segmented
-            value={d.type}
-            options={DITHERS}
-            onChange={(t) => setDither({ type: t })}
+            value={String(d.pixelSize)}
+            options={PIXEL_SIZES}
+            onChange={(v) => setDither({ pixelSize: Number(v) })}
           />
         </div>
         <Slider
@@ -121,19 +150,9 @@ export function Panel({
           value={d.threshold}
           min={0}
           max={255}
-          disabled={d.colorOn}
+          disabled={!bwMode}
           onChange={(v) => setDither({ threshold: v })}
         />
-        <Toggle
-          label="COLOR"
-          on={d.colorOn}
-          onChange={(v) => setDither({ colorOn: v })}
-        />
-        <div className="export note" style={{ padding: 0 }}>
-          {d.colorOn
-            ? "DITHER SNAPS TO PALETTE →"
-            : "1-BIT · THRESHOLD SETS CUTOFF"}
-        </div>
       </Section>
 
       {/* 2 — COLOR ----------------------------------------------------------- */}
@@ -142,56 +161,56 @@ export function Panel({
         title="COLOR"
         open={open.color}
         onToggle={() => toggle("color")}
-        pip={c.gradientMapOn ? "hot" : "off"}
+        pip={c.gradientMapOn ? "hot" : c.paletteOn ? "on" : "off"}
       >
-        <div className="ctl">
-          <div className="ctl__label">
-            <span>PALETTE</span>
-            <span className="val">{c.palette.length}</span>
-          </div>
-          <div className="palette">
-            {c.palette.map((hex, i) => (
-              <label className="chip" key={i} style={{ background: hex }}>
-                <input
-                  type="color"
-                  value={hex}
-                  onChange={(e) => setPaletteAt(i, e.target.value)}
-                  style={{ opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
-                />
-                <span
-                  className="x"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    removePalette(i);
-                  }}
-                >
-                  ×
-                </span>
-              </label>
-            ))}
-            <button className="add" onClick={addPalette} title="add color">
-              +
-            </button>
-          </div>
-        </div>
+        <Toggle label="ORIGINAL COLORS" on={c.originalColors} onChange={setOriginal} />
 
-        <Toggle
-          label="GRADIENT MAP"
-          on={c.gradientMapOn}
-          hot
-          onChange={(v) => setColor({ gradientMapOn: v })}
-        />
+        <Toggle label="PALETTE" on={c.paletteOn} onChange={setPaletteOn} />
+        {c.paletteOn && (
+          <div className="ctl">
+            <div className="ctl__label">
+              <span>{c.originalColors ? "COLORS" : "DUOTONE"}</span>
+              <span className="val">
+                {c.palette.length}/{paletteMax}
+              </span>
+            </div>
+            <div className="palette">
+              {c.palette.map((hex, i) => (
+                <label className="chip" key={i} style={{ background: hex }}>
+                  <input
+                    type="color"
+                    value={hex}
+                    onChange={(e) => setPaletteAt(i, e.target.value)}
+                    style={{ opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
+                  />
+                  <span
+                    className="x"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      removePalette(i);
+                    }}
+                  >
+                    ×
+                  </span>
+                </label>
+              ))}
+              {c.palette.length < paletteMax && (
+                <button className="add" onClick={addPalette} title="add color">
+                  +
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <Toggle label="GRADIENT MAP" on={c.gradientMapOn} hot onChange={setGradientOn} />
         {c.gradientMapOn && (
           <div className="gstops">
             <div className="gradbar" style={{ background: gradientCss }} />
             {stops.map((s, i) => (
               <div className="gstop" key={i}>
                 <label className="swatch" style={{ background: s.color }}>
-                  <input
-                    type="color"
-                    value={s.color}
-                    onChange={(e) => setStop(i, { color: e.target.value })}
-                  />
+                  <input type="color" value={s.color} onChange={(e) => setStop(i, { color: e.target.value })} />
                 </label>
                 <input
                   type="range"
@@ -202,11 +221,7 @@ export function Panel({
                   onChange={(e) => setStop(i, { pos: parseFloat(e.target.value) })}
                 />
                 <span className="gpos">{Math.round(s.pos * 100)}%</span>
-                <button
-                  className="key sm ghost"
-                  onClick={() => removeStop(i)}
-                  disabled={stops.length <= 2}
-                >
+                <button className="key sm ghost" onClick={() => removeStop(i)} disabled={stops.length <= 2}>
                   ×
                 </button>
               </div>
@@ -214,9 +229,6 @@ export function Panel({
             <button className="key sm ghost" onClick={addStop}>
               + STOP
             </button>
-            <div className="export note" style={{ padding: 0 }}>
-              OVERRIDES PALETTE ENTIRELY
-            </div>
           </div>
         )}
 
@@ -226,11 +238,7 @@ export function Panel({
           </div>
           <div className="colorrow">
             <label className="swatch" style={{ background: c.background }}>
-              <input
-                type="color"
-                value={c.background}
-                onChange={(e) => setColor({ background: e.target.value })}
-              />
+              <input type="color" value={c.background} onChange={(e) => setColor({ background: e.target.value })} />
             </label>
             <input
               className="hex"
@@ -249,27 +257,21 @@ export function Panel({
             </button>
           </div>
           {state.eyedropper && (
-            <div className="export note" style={{ padding: 0 }}>
+            <div className="note" style={{ padding: 0 }}>
               CLICK INSIDE THE CANVAS TO PICK
             </div>
           )}
         </div>
       </Section>
 
-      {/* 3 — CRT ------------------------------------------------------------- */}
+      {/* 3 — CRT (toggle lives in the header, visible while collapsed) -------- */}
       <Section
         index="03"
         title="CRT"
         open={open.crt}
         onToggle={() => toggle("crt")}
-        pip={crt.on ? "hot" : "off"}
+        headerToggle={{ on: crt.on, onChange: (v) => setCRT({ on: v }), hot: true }}
       >
-        <Toggle
-          label="CRT POST"
-          on={crt.on}
-          hot
-          onChange={(v) => setCRT({ on: v })}
-        />
         <Slider label="BARREL" value={crt.barrel} min={0} max={1} step={0.01} hot disabled={!crt.on} fmt={pct} onChange={(v) => setCRT({ barrel: v })} />
         <Slider label="SCANLINE" value={crt.scanline} min={0} max={1} step={0.01} hot disabled={!crt.on} fmt={pct} onChange={(v) => setCRT({ scanline: v })} />
         <Slider label="GLOW" value={crt.glow} min={0} max={1} step={0.01} hot disabled={!crt.on} fmt={pct} onChange={(v) => setCRT({ glow: v })} />
@@ -279,7 +281,17 @@ export function Panel({
         <Slider label="MASK" value={crt.mask} min={0} max={1} step={0.01} hot disabled={!crt.on} fmt={pct} onChange={(v) => setCRT({ mask: v })} />
       </Section>
 
-      {/* EXPORT -------------------------------------------------------------- */}
+      {/* ROADMAP (muted) ----------------------------------------------------- */}
+      <div className="roadmap">
+        <Section title="ROADMAP" open={open.roadmap} onToggle={() => toggle("roadmap")}>
+          <ul>
+            <li>MULTI-SPRITE SUPPORT</li>
+            <li>COLOR THEMES</li>
+          </ul>
+        </Section>
+      </div>
+
+      {/* EXPORT (pinned to the very bottom) ---------------------------------- */}
       <div className="export">
         <div className="ttl">EXPORT · PNG · 4:3</div>
         {crt.on ? (
@@ -290,7 +302,7 @@ export function Panel({
                 <span className="val">{state.exportScale}×</span>
               </div>
               <Segmented
-                value={String(state.exportScale) as "1" | "2" | "3"}
+                value={String(state.exportScale)}
                 options={[
                   { value: "1", label: "1×" },
                   { value: "2", label: "2×" },
@@ -300,10 +312,7 @@ export function Panel({
                 onChange={(v) => patch({ exportScale: Number(v) as 1 | 2 | 3 })}
               />
             </div>
-            <div className="note">
-              CRT BAKED IN · BACKGROUND FORCED OPAQUE ·{" "}
-              {800 * state.exportScale}×{600 * state.exportScale}
-            </div>
+            <div className="note">CRT BAKED · BG OPAQUE · {600 * state.exportScale}×{450 * state.exportScale}</div>
           </>
         ) : (
           <>
@@ -313,8 +322,7 @@ export function Panel({
               onChange={(v) => patch({ exportTransparent: v })}
             />
             <div className="note">
-              FLAT 800×600 ·{" "}
-              {state.exportTransparent ? "ALPHA PRESERVED" : "BACKGROUND FILLED"}
+              FLAT 600×450 · {state.exportTransparent ? "ALPHA PRESERVED" : "BACKGROUND FILLED"}
             </div>
           </>
         )}
@@ -326,20 +334,6 @@ export function Panel({
         >
           ▼ EXPORT PNG
         </button>
-      </div>
-
-      {/* ROADMAP ------------------------------------------------------------- */}
-      <div className="roadmap">
-        <Section
-          title="ROADMAP"
-          open={open.roadmap}
-          onToggle={() => toggle("roadmap")}
-        >
-          <ul>
-            <li>MULTI-SPRITE SUPPORT</li>
-            <li>COLOR THEMES</li>
-          </ul>
-        </Section>
       </div>
     </aside>
   );

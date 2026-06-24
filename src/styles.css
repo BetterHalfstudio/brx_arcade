@@ -129,21 +129,33 @@ button {
    COLLAPSIBLE SECTIONS
    ============================================================================ */
 .section {
-  border-bottom: var(--hairline) solid var(--line-soft);
+  border-bottom: var(--hairline) solid var(--line);
+  border-left: 2px solid transparent;
+}
+.section--open {
+  border-left-color: var(--accent);
+  background: rgba(255, 255, 255, 0.012);
 }
 .section__head {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 9px var(--pad);
+  padding: 10px var(--pad);
   text-align: left;
   color: var(--text-dim);
   letter-spacing: var(--letter-wide);
   font-size: var(--fs-head);
   user-select: none;
+  cursor: pointer;
+  background: linear-gradient(var(--panel-raised), var(--panel-bg));
+  border-top: var(--hairline) solid rgba(255, 255, 255, 0.03);
 }
 .section__head:hover {
+  color: var(--text);
+  background: var(--panel-raised);
+}
+.section__head.open {
   color: var(--text);
   background: var(--panel-raised);
 }
@@ -178,10 +190,12 @@ button {
   box-shadow: 0 0 6px -1px var(--accent-2);
 }
 .section__body {
-  padding: 4px var(--pad) 12px;
+  padding: 10px var(--pad) 13px;
   display: flex;
   flex-direction: column;
   gap: var(--gap);
+  background: var(--col-bg-2);
+  box-shadow: inset 0 1px 0 var(--line);
 }
 
 /* ============================================================================
@@ -513,11 +527,12 @@ input[type="range"].hot::-moz-range-thumb {
    EXPORT BLOCK
    ============================================================================ */
 .export {
-  padding: 12px var(--pad);
+  padding: 12px var(--pad) 14px;
   display: flex;
   flex-direction: column;
   gap: var(--gap);
-  border-bottom: var(--hairline) solid var(--line-soft);
+  border-top: var(--hairline) solid var(--line);
+  background: linear-gradient(var(--panel-bg), var(--col-bg-2));
 }
 .export .ttl {
   font-size: var(--fs-head);
@@ -574,7 +589,8 @@ input[type="range"].hot::-moz-range-thumb {
   position: relative;
   display: grid;
   place-items: center;
-  padding: 22px;
+  /* extra bottom padding reserves a band for the HUD readout */
+  padding: 22px 22px 46px;
   min-width: 0;
   background: var(--col-bg-2);
   overflow: hidden;
@@ -694,4 +710,107 @@ input[type="range"].hot::-moz-range-thumb {
 }
 .grow {
   flex: 1;
+}
+
+/* ============================================================================
+   ADD-IMAGE TOOLBAR
+   ============================================================================ */
+.toolbar {
+  padding: 10px var(--pad);
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--panel-bg);
+}
+
+/* ============================================================================
+   HEADER SWITCH (lives in a section header, visible while collapsed)
+   ============================================================================ */
+.hswitch {
+  width: 30px;
+  height: 15px;
+  background: var(--col-bg-2);
+  border: var(--hairline) solid var(--line);
+  border-radius: 2px;
+  position: relative;
+  flex: none;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.hswitch i {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 12px;
+  height: 11px;
+  background: var(--col-grey);
+  border-radius: 1px;
+  display: block;
+  transition: transform 0.12s, background 0.12s;
+}
+.hswitch.on {
+  background: rgba(41, 167, 175, 0.2);
+  border-color: var(--col-teal-deep);
+}
+.hswitch.on i {
+  transform: translateX(15px);
+  background: var(--accent);
+}
+.hswitch.on.hot {
+  background: rgba(239, 74, 32, 0.2);
+  border-color: var(--col-orange-deep);
+}
+.hswitch.on.hot i {
+  background: var(--accent-2);
+}
+
+/* ============================================================================
+   REPLACE-DROP OVERLAY (warns it will overwrite)
+   ============================================================================ */
+.stage.dragover .stage__drop.replace {
+  opacity: 1;
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+  background: rgba(239, 74, 32, 0.08);
+}
+
+/* ============================================================================
+   OVERWRITE CONFIRM MODAL
+   ============================================================================ */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 4, 3, 0.66);
+}
+.modal__box {
+  width: 320px;
+  max-width: 86vw;
+  background: var(--panel-bg);
+  border: var(--hairline) solid var(--col-orange-deep);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px -18px #000, var(--glow-orange);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal__title {
+  color: var(--accent-2);
+  letter-spacing: var(--letter-wide);
+  font-size: var(--fs-head);
+}
+.modal__body {
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  text-transform: none;
+}
+.modal__actions {
+  display: flex;
+  gap: var(--gap-sm);
+  justify-content: flex-end;
+}
+.modal__actions .key {
+  padding: 7px 14px;
 }
