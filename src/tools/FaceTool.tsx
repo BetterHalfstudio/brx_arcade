@@ -1,41 +1,49 @@
 import { useEffect, useRef, useState } from "react";
-import { Slider, Toggle, Segmented } from "../panel/controls";
-import type { DitherType } from "../state/types";
-import { HERO_PALETTE } from "../state/defaults";
 import { stylize, downscaleToBase64, type InlineImage } from "../face/api";
-import { pixelLock, upscale } from "../face/finisher";
+import { facePixelArt, upscale } from "../face/finisher";
 import { downloadBlob, stampName } from "../export/download";
 
+// Fixed FACE settings — no user controls for these.
+const FACE_TARGET_H = 144; // sprite height
+const FACE_TYPE = "bayer2" as const; // B2 ordered dither
+const FACE_PALETTE = ["#000000", "#ff3d00"]; // two colours: black + FF3D00
+const STYLE_REF_URL = "/style-ref.webp"; // bundled, sent with every call
+
 const DEFAULT_PROMPT =
-  "Redraw this person as a bold caricature: exaggerate their most distinctive " +
-  "features while keeping them recognizable. Flat illustrated style, clean cel " +
-  "shading, limited palette, head-and-shoulders, transparent background, no " +
-  "text. Match the style of any reference images.";
+  "Redraw this person as a caricature: slightly exaggerate their most " +
+  "distinctive features while keeping them recognizable. Flat illustrated " +
+  "style, clean cel shading, limited palette, head-and-shoulders, transparent " +
+  "background, no text. Match the style of any reference images.";
 
 type Source = HTMLImageElement | HTMLCanvasElement;
-interface Ref extends InlineImage {
-  url: string;
-}
 
 export function FaceTool() {
   const [source, setSource] = useState<Source | null>(null);
   const [result, setResult] = useState<HTMLImageElement | null>(null);
   const [camOn, setCamOn] = useState(false);
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
-  const [refs, setRefs] = useState<Ref[]>([]);
+  const [styleRef, setStyleRef] = useState<InlineImage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // finisher (pixel lock) params
-  const [lockOn, setLockOn] = useState(true);
-  const [type, setType] = useState<DitherType>("bayer4");
-  const [targetH, setTargetH] = useState(128);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const faceFileRef = useRef<HTMLInputElement>(null);
-  const refFileRef = useRef<HTMLInputElement>(null);
+
+  // --- load the bundled style reference once ---------------------------------
+  useEffect(() => {
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (!cancelled) setStyleRef(downscaleToBase64(img, 768, "image/png", 1));
+    };
+    img.onerror = () => {}; // missing file -> no style ref, still works
+    img.src = STYLE_REF_URL;
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // --- camera ----------------------------------------------------------------
   function stopCam() {
@@ -52,7 +60,6 @@ export function FaceTool() {
       });
       streamRef.current = stream;
       setCamOn(true);
-      // attach after the <video> is shown
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -76,7 +83,7 @@ export function FaceTool() {
   }
   useEffect(() => () => stopCam(), []);
 
-  // --- file inputs -----------------------------------------------------------
+  // --- upload ----------------------------------------------------------------
   function loadFace(file: File) {
     if (!file.type.startsWith("image/")) return;
     const url = URL.createObjectURL(file);
@@ -88,18 +95,6 @@ export function FaceTool() {
     };
     img.src = url;
   }
-  function addRefs(files: FileList) {
-    Array.from(files).forEach((f) => {
-      if (!f.type.startsWith("image/")) return;
-      const url = URL.createObjectURL(f);
-      const img = new Image();
-      img.onload = () => {
-        const inl = downscaleToBase64(img, 768, "image/png", 1);
-        setRefs((r) => [...r, { ...inl, url }]);
-      };
-      img.src = url;
-    });
-  }
 
   // --- stylize ---------------------------------------------------------------
   async function onStylize() {
@@ -108,11 +103,7 @@ export function FaceTool() {
     setError(null);
     try {
       const face = downscaleToBase64(source, 768, "image/jpeg", 0.92);
-      const out = await stylize(
-        face,
-        prompt,
-        refs.map((r) => ({ data: r.data, mimeType: r.mimeType }))
-      );
+      const out = await stylize(face, prompt, styleRef ? [styleRef] : []);
       const img = new Image();
       img.onload = () => {
         setResult(img);
@@ -129,7 +120,7 @@ export function FaceTool() {
     }
   }
 
-  // --- live pixel-lock preview ----------------------------------------------
+  // --- fixed pixel-art preview ----------------------------------------------
   useEffect(() => {
     const base = result || source;
     const cv = previewRef.current;
@@ -139,18 +130,26 @@ export function FaceTool() {
       cv.width = cv.height = 0;
       return;
     }
-    const sprite = pixelLock(base, { targetH, palette: HERO_PALETTE, type, on: lockOn });
+    const sprite = facePixelArt(base, {
+      targetH: FACE_TARGET_H,
+      palette: FACE_PALETTE,
+      type: FACE_TYPE,
+    });
     cv.width = sprite.width;
     cv.height = sprite.height;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, cv.width, cv.height);
     ctx.drawImage(sprite, 0, 0);
-  }, [source, result, lockOn, type, targetH]);
+  }, [source, result]);
 
   function onExport() {
     const base = result || source;
     if (!base) return;
-    const sprite = pixelLock(base, { targetH, palette: HERO_PALETTE, type, on: lockOn });
+    const sprite = facePixelArt(base, {
+      targetH: FACE_TARGET_H,
+      palette: FACE_PALETTE,
+      type: FACE_TYPE,
+    });
     const factor = Math.max(1, Math.round(512 / sprite.height));
     upscale(sprite, factor).toBlob((b) => b && downloadBlob(b, stampName()), "image/png");
   }
@@ -171,9 +170,7 @@ export function FaceTool() {
             )}
             <button className="key block" onClick={() => faceFileRef.current?.click()}>↑ UPLOAD</button>
           </div>
-          {camOn && (
-            <button className="key sm ghost" onClick={stopCam}>✕ STOP CAMERA</button>
-          )}
+          {camOn && <button className="key sm ghost" onClick={stopCam}>✕ STOP CAMERA</button>}
         </div>
 
         {/* AI STYLIZE */}
@@ -185,27 +182,6 @@ export function FaceTool() {
             spellCheck={false}
             onChange={(e) => setPrompt(e.target.value)}
           />
-          <div className="ctl__label">
-            <span>STYLE REFS</span>
-            <span className="val">{refs.length}</span>
-          </div>
-          <div className="palette">
-            {refs.map((r, i) => (
-              <div
-                className="chip"
-                key={i}
-                style={{ background: `center/cover url(${r.url})` }}
-              >
-                <span
-                  className="x"
-                  onClick={() => setRefs((rr) => rr.filter((_, j) => j !== i))}
-                >
-                  ×
-                </span>
-              </div>
-            ))}
-            <button className="add" onClick={() => refFileRef.current?.click()}>+</button>
-          </div>
           <button
             className="key teal block"
             disabled={!source || busy}
@@ -214,35 +190,11 @@ export function FaceTool() {
           >
             {busy ? "◴ STYLIZING…" : "▶ STYLIZE"}
           </button>
-          {error && <div className="note err">⚠ {error}</div>}
-        </div>
-
-        {/* FINISH (pixel lock) */}
-        <div className="fgroup">
-          <div className="ttl">PIXEL LOCK</div>
-          <Toggle label="ENABLE" on={lockOn} onChange={setLockOn} />
-          <div className="ctl">
-            <div className="ctl__label"><span>DITHER</span></div>
-            <Segmented
-              value={type}
-              options={[
-                { value: "fs", label: "FS" },
-                { value: "bayer2", label: "B2" },
-                { value: "bayer4", label: "B4" },
-                { value: "bayer8", label: "B8" },
-              ]}
-              onChange={setType}
-            />
+          <div className="note">
+            STYLE REF {styleRef ? "· LOADED" : "· NONE (add public/style-ref.webp)"}
+            {" · "}144PX · B2 · 2-COLOR
           </div>
-          <Slider
-            label="PIXEL HEIGHT"
-            value={targetH}
-            min={32}
-            max={256}
-            step={8}
-            fmt={(v) => v + "px"}
-            onChange={setTargetH}
-          />
+          {error && <div className="note err">⚠ {error}</div>}
         </div>
 
         {/* EXPORT */}
@@ -255,6 +207,7 @@ export function FaceTool() {
           >
             ▼ EXPORT PNG
           </button>
+          <div className="note">TRANSPARENT · HEAD CUT OUT</div>
         </div>
 
         <input
@@ -268,20 +221,9 @@ export function FaceTool() {
             e.target.value = "";
           }}
         />
-        <input
-          ref={refFileRef}
-          type="file"
-          accept="image/*"
-          multiple
-          style={{ display: "none" }}
-          onChange={(e) => {
-            if (e.target.files) addRefs(e.target.files);
-            e.target.value = "";
-          }}
-        />
       </aside>
 
-      {/* PREVIEW */}
+      {/* PREVIEW (head cut out, shown on black) */}
       <div className="stage">
         <div className="stage__frame face">
           <video
@@ -291,9 +233,7 @@ export function FaceTool() {
             muted
             style={{ display: camOn ? "block" : "none" }}
           />
-          {!camOn && hasBase && (
-            <canvas ref={previewRef} className="face__preview" />
-          )}
+          {!camOn && hasBase && <canvas ref={previewRef} className="face__preview" />}
           {!camOn && !hasBase && (
             <div className="stage__empty">
               <div>
@@ -304,8 +244,8 @@ export function FaceTool() {
           )}
         </div>
         <div className="stage__hud" style={{ position: "absolute", left: 22, bottom: 14 }}>
-          <span><b>STAGE</b> {result ? "AI + LOCK" : source ? "LOCK (no AI yet)" : "EMPTY"}</span>
-          <span><b>REFS</b> {refs.length}</span>
+          <span><b>STAGE</b> {result ? "AI + ART" : source ? "ART (no AI yet)" : "EMPTY"}</span>
+          <span><b>OUT</b> 144PX · BLACK + FF3D00</span>
         </div>
       </div>
     </div>

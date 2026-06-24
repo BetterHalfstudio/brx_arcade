@@ -41,11 +41,15 @@ export interface GradientStop {
 export interface ColorState {
   /** ON = keep the image's original colors; OFF = black & white base */
   originalColors: boolean;
-  /** recolor mode A: snap the dither to `palette` (exclusive with gradient) */
+  /** recolor mode A: snap the dither to the active palette (excl. gradient) */
   paletteOn: boolean;
   /** recolor mode B: gradient map by luminance (exclusive with palette) */
   gradientMapOn: boolean;
-  palette: string[]; // colors the dither snaps to (2 max when B&W)
+  /** color-mode palette: a built-in default or the user's custom set */
+  paletteSource: "default" | "custom";
+  defaultIndex: number; // 0..4 selected built-in palette
+  customPalette: string[]; // user palette (color mode)
+  bwPalette: string[]; // 2-color duotone used when B&W (Original Colors off)
   gradientStops: GradientStop[];
   background: string; // hex
 }

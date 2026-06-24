@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { StoreApi } from "../state/store";
 import type { DitherType } from "../state/types";
 import { PALETTE_MAX, PALETTE_MAX_BW } from "../state/types";
+import { DEFAULT_PALETTES } from "../state/defaults";
 import { isValidHex } from "../util/color";
 import { Section, Slider, Toggle, Segmented } from "./controls";
 
@@ -47,20 +48,27 @@ export function Panel({
 
   // pure black & white only when no recolor is active
   const bwMode = !c.originalColors && !c.paletteOn && !c.gradientMapOn;
-  const paletteMax = c.originalColors ? PALETTE_MAX : PALETTE_MAX_BW;
 
-  // ---- palette helpers ----
-  const setPaletteAt = (i: number, hex: string) =>
-    setColor({ palette: c.palette.map((p, j) => (j === i ? hex : p)) });
-  const removePalette = (i: number) =>
-    setColor({ palette: c.palette.filter((_, j) => j !== i) });
-  const addPalette = () =>
-    c.palette.length < paletteMax &&
-    setColor({ palette: [...c.palette, c.palette[c.palette.length - 1] ?? "#ffffff"] });
+  // ---- custom (color-mode) palette helpers — editing switches to custom ----
+  const setCustomAt = (i: number, hex: string) =>
+    setColor({ paletteSource: "custom", customPalette: c.customPalette.map((p, j) => (j === i ? hex : p)) });
+  const removeCustom = (i: number) =>
+    setColor({ paletteSource: "custom", customPalette: c.customPalette.filter((_, j) => j !== i) });
+  const addCustom = () =>
+    c.customPalette.length < PALETTE_MAX &&
+    setColor({ paletteSource: "custom", customPalette: [...c.customPalette, c.customPalette[c.customPalette.length - 1] ?? "#ffffff"] });
+  const selectDefault = (i: number) => setColor({ paletteSource: "default", defaultIndex: i });
 
-  // ---- mutually-exclusive recolor toggles ----
-  const setOriginal = (v: boolean) =>
-    setColor({ originalColors: v, palette: v ? c.palette : c.palette.slice(0, PALETTE_MAX_BW) });
+  // ---- B&W duotone helpers (max 2) ----
+  const setBwAt = (i: number, hex: string) =>
+    setColor({ bwPalette: c.bwPalette.map((p, j) => (j === i ? hex : p)) });
+  const addBw = () =>
+    c.bwPalette.length < PALETTE_MAX_BW && setColor({ bwPalette: [...c.bwPalette, "#ffffff"] });
+  const removeBw = (i: number) =>
+    c.bwPalette.length > 1 && setColor({ bwPalette: c.bwPalette.filter((_, j) => j !== i) });
+
+  // ---- recolor toggles — both palettes are preserved across the switch ----
+  const setOriginal = (v: boolean) => setColor({ originalColors: v });
   const setPaletteOn = (v: boolean) =>
     setColor({ paletteOn: v, gradientMapOn: v ? false : c.gradientMapOn });
   const setGradientOn = (v: boolean) =>
@@ -155,38 +163,79 @@ export function Panel({
         <Toggle label="ORIGINAL COLORS" on={c.originalColors} onChange={setOriginal} />
 
         <Toggle label="PALETTE" on={c.paletteOn} onChange={setPaletteOn} />
-        {c.paletteOn && (
+
+        {/* color mode: 5 default palettes + custom (mutually greyed) */}
+        {c.paletteOn && c.originalColors && (
+          <>
+            <div className="ctl">
+              <div className="ctl__label"><span>DEFAULT</span></div>
+              <div className={"palrow" + (c.paletteSource === "custom" ? " inactive" : "")}>
+                {DEFAULT_PALETTES.map((p, i) => (
+                  <button
+                    key={i}
+                    className={"palbtn" + (c.paletteSource === "default" && c.defaultIndex === i ? " active" : "")}
+                    onClick={() => selectDefault(i)}
+                    title={`palette 0${i + 1}`}
+                  >
+                    <span className="sw">
+                      {p.slice(0, 4).map((col, j) => (
+                        <i key={j} style={{ background: col }} />
+                      ))}
+                    </span>
+                    <span className="lbl">0{i + 1}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={"ctl" + (c.paletteSource === "default" ? " dim" : "")}>
+              <div className="ctl__label">
+                <span>CUSTOM</span>
+                <span className="val">{c.customPalette.length}/{PALETTE_MAX}</span>
+              </div>
+              <div className="palette">
+                {c.customPalette.map((hex, i) => (
+                  <label className="chip" key={i} style={{ background: hex }}>
+                    <input
+                      type="color"
+                      value={hex}
+                      onChange={(e) => setCustomAt(i, e.target.value)}
+                      style={{ opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
+                    />
+                    <span className="x" onClick={(e) => { e.preventDefault(); removeCustom(i); }}>×</span>
+                  </label>
+                ))}
+                {c.customPalette.length < PALETTE_MAX && (
+                  <button className="add" onClick={addCustom} title="add color">+</button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* B&W mode: 2-slot duotone (defaults to black + FF3D00) */}
+        {c.paletteOn && !c.originalColors && (
           <div className="ctl">
             <div className="ctl__label">
-              <span>{c.originalColors ? "COLORS" : "DUOTONE"}</span>
-              <span className="val">
-                {c.palette.length}/{paletteMax}
-              </span>
+              <span>DUOTONE</span>
+              <span className="val">{c.bwPalette.length}/{PALETTE_MAX_BW}</span>
             </div>
             <div className="palette">
-              {c.palette.map((hex, i) => (
+              {c.bwPalette.map((hex, i) => (
                 <label className="chip" key={i} style={{ background: hex }}>
                   <input
                     type="color"
                     value={hex}
-                    onChange={(e) => setPaletteAt(i, e.target.value)}
+                    onChange={(e) => setBwAt(i, e.target.value)}
                     style={{ opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
                   />
-                  <span
-                    className="x"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      removePalette(i);
-                    }}
-                  >
-                    ×
-                  </span>
+                  {c.bwPalette.length > 1 && (
+                    <span className="x" onClick={(e) => { e.preventDefault(); removeBw(i); }}>×</span>
+                  )}
                 </label>
               ))}
-              {c.palette.length < paletteMax && (
-                <button className="add" onClick={addPalette} title="add color">
-                  +
-                </button>
+              {c.bwPalette.length < PALETTE_MAX_BW && (
+                <button className="add" onClick={addBw} title="add color">+</button>
               )}
             </div>
           </div>

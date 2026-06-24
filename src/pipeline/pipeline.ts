@@ -5,6 +5,7 @@ import { buildGradientLut, applyGradientMap } from "./gradientMap";
 import { paletteToBytes } from "../util/color";
 import { CANVAS_W, CANVAS_H } from "../state/types";
 import type { AppState } from "../state/types";
+import { activePalette } from "../state/defaults";
 
 // PIPELINE ORCHESTRATOR.
 // Recomputes stages 1..4 from the ORIGINAL source on every run() — never from
@@ -75,12 +76,13 @@ export class Pipeline {
       : color.originalColors
         ? "original"
         : "bw";
+    const pal = activePalette(color);
     dither(data, B > 1 ? wq : CANVAS_W, B > 1 ? hq : CANVAS_H, {
       type: d.type,
       mode,
       threshold: d.threshold,
-      palette: paletteToBytes(color.palette),
-      paletteCount: color.palette.length,
+      palette: paletteToBytes(pal),
+      paletteCount: pal.length,
     });
 
     // 4 — gradient map (overrides palette/original colors entirely when ON)

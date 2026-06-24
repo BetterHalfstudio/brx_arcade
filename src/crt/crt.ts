@@ -70,7 +70,7 @@ export class CRTRenderer {
 
     gl.useProgram(prog);
     const names = [
-      "u_tex", "u_texRes", "u_time", "u_barrel", "u_scanline",
+      "u_tex", "u_texRes", "u_outRes", "u_time", "u_barrel", "u_scanline",
       "u_glow", "u_aberration", "u_vignette", "u_flicker", "u_mask",
     ];
     this.u = {};
@@ -107,6 +107,7 @@ export class CRTRenderer {
 
     const p = this.params;
     gl.uniform2f(this.u.u_texRes, CANVAS_W, CANVAS_H);
+    gl.uniform2f(this.u.u_outRes, this.canvas.width, this.canvas.height);
     gl.uniform1f(this.u.u_time, timeSec);
     gl.uniform1f(this.u.u_barrel, p.barrel);
     gl.uniform1f(this.u.u_scanline, p.scanline);

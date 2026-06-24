@@ -6,11 +6,10 @@
 const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
 
 const DEFAULT_PROMPT =
-  "Redraw the person in this photo as a bold caricature character: exaggerate " +
-  "their most distinctive facial features while keeping them clearly " +
-  "recognizable. Flat, graphic, illustrated style with clean cel shading and a " +
-  "limited palette. Centered head-and-shoulders portrait on a plain transparent " +
-  "background, no text. Match the art style of any provided reference images.";
+  "Redraw this person as a caricature: slightly exaggerate their most " +
+  "distinctive features while keeping them recognizable. Flat illustrated " +
+  "style, clean cel shading, limited palette, head-and-shoulders, transparent " +
+  "background, no text. Match the style of any reference images.";
 
 interface InlineImage {
   data: string; // base64 (no data: prefix)

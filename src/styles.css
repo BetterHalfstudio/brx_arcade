@@ -188,7 +188,7 @@ button {
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: var(--col-bg);
+  background: #000; /* head is a transparent cutout shown on black */
 }
 .face__video,
 .face__preview {
@@ -620,6 +620,54 @@ input[type="range"].hot::-moz-range-thumb {
 .palette .add:hover {
   color: var(--accent);
   border-color: var(--col-teal-deep);
+}
+
+/* default-palette buttons (color mode) */
+.palrow {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.palrow.inactive {
+  opacity: 0.4;
+}
+.palbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 4px 3px;
+  background: var(--col-bg-2);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+}
+.palbtn:hover {
+  border-color: var(--col-grey);
+}
+.palbtn.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--col-teal-deep);
+}
+.palbtn .sw {
+  display: flex;
+  border: var(--hairline) solid var(--line);
+}
+.palbtn .sw i {
+  width: 8px;
+  height: 14px;
+  display: block;
+}
+.palbtn .lbl {
+  font-size: var(--fs-micro);
+  color: var(--text-mute);
+  letter-spacing: var(--letter);
+}
+.palbtn.active .lbl {
+  color: var(--accent);
+}
+/* dimmed-but-still-usable: clicking re-activates this group */
+.ctl.dim {
+  opacity: 0.4;
 }
 
 /* color row (background / single swatch + readout) */

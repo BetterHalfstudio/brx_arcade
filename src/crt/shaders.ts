@@ -18,7 +18,8 @@ in vec2 v_uv;
 out vec4 fragColor;
 
 uniform sampler2D u_tex;
-uniform vec2  u_texRes;     // source size (800x600)
+uniform vec2  u_texRes;     // source size (the pixel grid)
+uniform vec2  u_outRes;     // output drawing-buffer size (device px)
 uniform float u_time;
 uniform float u_barrel;
 uniform float u_scanline;
@@ -76,12 +77,15 @@ void main(){
     col += bloom * u_glow * 1.5;
   }
 
-  // scanlines / venetian blinds with a slow vertical roll
+  // scanlines: a screen-space overlay at a fixed line count, DECOUPLED from the
+  // pixel grid so they never align with pixel rows (which would hide every other
+  // row). Gentle — brightness never drops below ~0.5, so no pixel is lost.
   if (u_scanline > 0.001) {
-    float roll = u_time * 1.1;
-    float s = 0.5 + 0.5 * sin((uv.y * u_texRes.y + roll) * PI);
-    s = pow(s, 1.5);
-    col *= mix(1.0, s, u_scanline * 0.85);
+    float yy = gl_FragCoord.y / u_outRes.y; // 0..1 in output space
+    float lines = 240.0;                     // classic CRT line count
+    float roll = u_time * 0.6;
+    float s = 0.5 + 0.5 * sin((yy * lines - roll) * 6.2831853);
+    col *= mix(1.0, 0.5 + 0.5 * s, u_scanline);
   }
 
   // aperture / phosphor mask on output pixels (RGB triads)
