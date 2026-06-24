@@ -17,9 +17,12 @@ type DragMode =
 export function CanvasStage({
   store,
   engineRef,
+  onDropFile,
 }: {
   store: StoreApi;
   engineRef: MutableRefObject<Engine | null>;
+  /** App decides whether to confirm an overwrite before loading. */
+  onDropFile: (file: File) => void;
 }) {
   const { state } = store;
   const stageRef = useRef<HTMLDivElement>(null);
@@ -50,9 +53,12 @@ export function CanvasStage({
   useEffect(() => {
     const stage = stageRef.current!;
     const fit = () => {
-      const pad = 44; // breathing room so the canvas never kisses the edges
-      const availW = stage.clientWidth - pad;
-      const availH = stage.clientHeight - pad;
+      // Reserve a bottom band for the HUD so the canvas never overlaps it.
+      const padX = 44;
+      const padTop = 22;
+      const padBottom = 44;
+      const availW = stage.clientWidth - padX;
+      const availH = stage.clientHeight - padTop - padBottom;
       let w = availW;
       let h = (w * CANVAS_H) / CANVAS_W;
       if (h > availH) {
@@ -72,23 +78,12 @@ export function CanvasStage({
     return () => ro.disconnect();
   }, []);
 
-  // --- file / drop loading ---------------------------------------------------
-  function loadFile(file: File) {
-    if (!file.type.includes("png") && !file.type.startsWith("image/")) return;
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      store.loadImage(img);
-      URL.revokeObjectURL(url);
-    };
-    img.src = url;
-  }
-
+  // --- drop loading (App gates on the overwrite confirm) ---------------------
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) loadFile(file);
+    if (file && file.type.startsWith("image/")) onDropFile(file);
   }
 
   // --- pointer mapping -------------------------------------------------------
@@ -237,15 +232,17 @@ export function CanvasStage({
             <div>
               <div className="glyph">▦</div>
               <div className="big">DROP A PNG</div>
-              <div className="sub">800 × 600 · NEAREST · CLIENT-SIDE</div>
+              <div className="sub">600 × 450 · NEAREST · CLIENT-SIDE</div>
             </div>
           </div>
         )}
 
-        <div className="stage__drop">
+        <div className={"stage__drop" + (hasImage ? " replace" : "")}>
           <div>
-            <div className="big">RELEASE TO LOAD</div>
-            <div className="sub">PNG → 800 × 600</div>
+            <div className="big">{hasImage ? "RELEASE TO REPLACE" : "RELEASE TO LOAD"}</div>
+            <div className="sub">
+              {hasImage ? "⚠ OVERWRITES CURRENT IMAGE" : "PNG → 600 × 450"}
+            </div>
           </div>
         </div>
       </div>

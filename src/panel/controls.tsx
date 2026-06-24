@@ -9,26 +9,50 @@ export function Section(props: {
   open: boolean;
   onToggle: () => void;
   pip?: "off" | "on" | "hot";
+  /** optional switch shown in the header (visible while collapsed) */
+  headerToggle?: { on: boolean; onChange: (v: boolean) => void; hot?: boolean };
   children: ReactNode;
 }) {
+  const ht = props.headerToggle;
   return (
-    <div className="section">
-      <button
+    <div className={"section" + (props.open ? " section--open" : "")}>
+      <div
         className={"section__head" + (props.open ? " open" : "")}
+        role="button"
+        tabIndex={0}
         onClick={props.onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            props.onToggle();
+          }
+        }}
       >
         <span className="chev">{props.open ? "▾" : "▸"}</span>
         {props.index && <span className="idx">{props.index}</span>}
         <span>{props.title}</span>
         <span className="spacer" />
-        {props.pip && (
+        {ht && (
+          <span
+            className={"hswitch" + (ht.on ? " on" : "") + (ht.hot ? " hot" : "")}
+            role="switch"
+            aria-checked={ht.on}
+            onClick={(e) => {
+              e.stopPropagation();
+              ht.onChange(!ht.on);
+            }}
+          >
+            <i />
+          </span>
+        )}
+        {props.pip && !ht && (
           <span
             className={
               "pip" + (props.pip === "on" ? " on" : props.pip === "hot" ? " hot" : "")
             }
           />
         )}
-      </button>
+      </div>
       {props.open && <div className="section__body">{props.children}</div>}
     </div>
   );
@@ -70,10 +94,17 @@ export function Toggle(props: {
   on: boolean;
   onChange: (v: boolean) => void;
   hot?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
-      className={"toggle" + (props.on ? " on" : "") + (props.hot ? " hot" : "")}
+      className={
+        "toggle" +
+        (props.on ? " on" : "") +
+        (props.hot ? " hot" : "") +
+        (props.disabled ? " disabled" : "")
+      }
+      disabled={props.disabled}
       onClick={() => props.onChange(!props.on)}
     >
       <span>{props.label}</span>

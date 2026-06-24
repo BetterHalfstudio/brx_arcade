@@ -26,15 +26,17 @@ export function makeDefaultState(): AppState {
     },
     dither: {
       type: "fs",
+      pixelSize: 1,
       blackPoint: 0,
       whitePoint: 255,
       gamma: 1,
       threshold: 128,
-      colorOn: true,
     },
     color: {
-      palette: [...HERO_PALETTE],
+      originalColors: true,
+      paletteOn: false,
       gradientMapOn: false,
+      palette: [...HERO_PALETTE],
       gradientStops: [
         { pos: 0, color: "#0a0908" },
         { pos: 0.5, color: "#ef4a20" },
