@@ -1,0 +1,78 @@
+/* ============================================================================
+   BRX_ARCADE — THEME
+   Every theme value lives here. Re-skinning is a single-file change.
+   Palette is sampled from hero reference #1 (the retro keyboard/terminal):
+   near-black field, warm cream keys, bright teal + orange-red accents,
+   warm dark greys. Type is VCR_OSD_MONO (classic CRT/OSD monospace).
+   ============================================================================ */
+
+@font-face {
+  font-family: "VCR_OSD_MONO";
+  src: url("/fonts/VCR_OSD_MONO.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  /* ---- Core palette (from hero #1) ---------------------------------------- */
+  --col-bg:          #0a0908;  /* app field — near black, warm */
+  --col-bg-2:        #100e0c;  /* canvas gutter / recessed areas */
+  --col-panel:       #131110;  /* panel surface */
+  --col-panel-2:     #1a1715;  /* raised rows / control wells */
+  --col-cream:       #e7e2c6;  /* primary "key" cream — main text */
+  --col-cream-dim:   #a9a489;  /* secondary text */
+  --col-cream-mute:  #6f6b58;  /* muted / disabled text */
+  --col-teal:        #29a7af;  /* cyan accent (active, focus) */
+  --col-teal-deep:   #1c7d83;
+  --col-orange:      #ef4a20;  /* orange-red accent (hot / record) */
+  --col-orange-deep: #b8350f;
+  --col-grey:        #3b3934;  /* dark grey key */
+  --col-grey-2:      #2a2823;  /* darker key / track */
+  --col-olive:       #a7af2a;  /* ascii-art yellow-green (rare highlight) */
+
+  /* ---- Semantic roles ----------------------------------------------------- */
+  --bg:              var(--col-bg);
+  --panel-bg:        var(--col-panel);
+  --panel-raised:    var(--col-panel-2);
+  --text:            var(--col-cream);
+  --text-dim:        var(--col-cream-dim);
+  --text-mute:       var(--col-cream-mute);
+  --accent:          var(--col-teal);
+  --accent-2:        var(--col-orange);
+  --line:            #2a2620;  /* hairline borders */
+  --line-soft:       #1f1c18;
+  --well:            var(--col-grey-2);
+  --key:             var(--col-grey);
+
+  /* ---- Type --------------------------------------------------------------- */
+  --font-ui: "VCR_OSD_MONO", "VT323", ui-monospace, "SFMono-Regular", Menlo,
+    Consolas, monospace;
+  --fs-title: 18px;
+  --fs-head: 12px;
+  --fs-base: 12px;
+  --fs-small: 10px;
+  --fs-micro: 9px;
+  --letter: 0.06em;        /* base tracking — VCR likes a little air */
+  --letter-wide: 0.16em;   /* headers / labels */
+
+  /* ---- Metrics ------------------------------------------------------------ */
+  --panel-w: 268px;        /* left panel width */
+  --gap: 8px;
+  --gap-sm: 5px;
+  --pad: 10px;
+  --row-h: 22px;
+  --radius: 3px;
+  --radius-lg: 5px;
+  --hairline: 1px;
+
+  /* ---- Effects ------------------------------------------------------------ */
+  --glow-teal: 0 0 0 1px var(--col-teal-deep), 0 0 8px -2px var(--col-teal);
+  --glow-orange: 0 0 0 1px var(--col-orange-deep), 0 0 8px -2px var(--col-orange);
+  --scan: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.16) 3px
+  );
+}
