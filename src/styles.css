@@ -163,8 +163,9 @@ button {
 }
 .prompt {
   width: 100%;
-  min-height: 78px;
-  resize: vertical;
+  min-height: 0;
+  resize: none;
+  overflow: hidden; /* height is auto-grown to fit content in JS */
   background: var(--col-bg-2);
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
@@ -203,6 +204,97 @@ button {
 .face__preview {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+}
+
+/* ---- numbered, gated steps (FACE) --------------------------------------- */
+.step {
+  padding: 11px var(--pad) 12px;
+  border-bottom: var(--hairline) solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  transition: opacity 0.25s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.step.locked {
+  opacity: 0.36;
+  pointer-events: none;
+}
+.step__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--fs-head);
+  color: var(--text-dim);
+  letter-spacing: var(--letter-wide);
+}
+.step__head.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+.step__head.clickable:hover {
+  color: var(--text);
+}
+.step__head .spacer {
+  flex: 1;
+}
+.step__head .chev {
+  color: var(--accent);
+  width: 12px;
+  text-align: center;
+}
+.step__num {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--col-bg-2);
+  color: var(--text-mute);
+  font-size: var(--fs-small);
+}
+.step:not(.locked) .step__num {
+  color: var(--accent);
+  border-color: var(--col-teal-deep);
+}
+
+/* attention flash: glow the input step, dull everything else, fade in/out */
+@keyframes faceFlash {
+  0%,
+  100% {
+    background: transparent;
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+  40%,
+  60% {
+    background: rgba(239, 74, 32, 0.16);
+    box-shadow: inset 0 0 0 2px var(--accent-2),
+      inset 0 0 34px -4px var(--accent-2);
+  }
+}
+.step--flash {
+  position: relative;
+  z-index: 1;
+  animation: faceFlash 1.4s ease both;
+}
+.app.attention .stage,
+.app.attention .panel > *:not(.step--flash) {
+  opacity: 0.3;
+  transition: opacity 0.3s ease;
+}
+
+/* clickable empty state (taps draw the eye to step 1) */
+.stage__empty--btn {
+  pointer-events: auto;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+}
+.stage__empty--btn:hover .big {
+  color: var(--accent-2);
 }
 
 /* ---- Left panel ---------------------------------------------------------- */

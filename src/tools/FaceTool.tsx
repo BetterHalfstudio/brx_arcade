@@ -25,9 +25,11 @@ export function FaceTool() {
   const [result, setResult] = useState<HTMLImageElement | null>(null);
   const [camOn, setCamOn] = useState(false);
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
+  const [promptOpen, setPromptOpen] = useState(false);
   const [styleRef, setStyleRef] = useState<InlineImage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [flash, setFlash] = useState(false);
 
   // levels + threshold (PX size and dither pattern stay fixed)
   const [blackPoint, setBlackPoint] = useState(0);
@@ -49,6 +51,13 @@ export function FaceTool() {
   const streamRef = useRef<MediaStream | null>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const faceFileRef = useRef<HTMLInputElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const flashTimer = useRef<number | undefined>(undefined);
+
+  // progressive gating
+  const step2Locked = !source; // step 1 complete = a face is loaded
+  const step3Locked = !result; // step 2 complete = a caricature exists
+  const hasBase = !!(source || result);
 
   // --- load the bundled style reference once ---------------------------------
   useEffect(() => {
@@ -57,12 +66,32 @@ export function FaceTool() {
     img.onload = () => {
       if (!cancelled) setStyleRef(downscaleToBase64(img, 768, "image/png", 1));
     };
-    img.onerror = () => {}; // missing file -> no style ref, still works
+    img.onerror = () => {};
     img.src = STYLE_REF_URL;
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // auto-grow the prompt textarea to fit its content (no scrolling)
+  useEffect(() => {
+    const ta = taRef.current;
+    if (promptOpen && ta) {
+      ta.style.height = "auto";
+      // add the border (box-sizing: border-box) so content fully fits, no scroll
+      const borderY = ta.offsetHeight - ta.clientHeight;
+      ta.style.height = ta.scrollHeight + borderY + "px";
+    }
+  }, [promptOpen, prompt]);
+
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
+
+  // momentarily glow the INPUT step + dull everything else
+  function flashInputStep() {
+    setFlash(true);
+    window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(false), 1400);
+  }
 
   // --- camera ----------------------------------------------------------------
   function stopCam() {
@@ -139,7 +168,7 @@ export function FaceTool() {
     }
   }
 
-  // --- fixed pixel-art preview ----------------------------------------------
+  // --- live pixel-art preview ------------------------------------------------
   useEffect(() => {
     const base = result || source;
     const cv = previewRef.current;
@@ -166,14 +195,15 @@ export function FaceTool() {
     upscale(sprite, factor).toBlob((b) => b && downloadBlob(b, stampName()), "image/png");
   }
 
-  const hasBase = !!(source || result);
-
   return (
-    <div className="app">
+    <div className={"app" + (flash ? " attention" : "")}>
       <aside className="panel">
-        {/* INPUT */}
-        <div className="fgroup">
-          <div className="ttl">INPUT · FACE</div>
+        {/* STEP 1 — INPUT */}
+        <div className={"step" + (flash ? " step--flash" : "")}>
+          <div className="step__head">
+            <span className="step__num">1</span>
+            <span className="step__title">INPUT · FACE</span>
+          </div>
           <div className="row">
             {!camOn ? (
               <button className="key block" onClick={startCam}>◉ CAMERA</button>
@@ -185,15 +215,23 @@ export function FaceTool() {
           {camOn && <button className="key sm ghost" onClick={stopCam}>✕ STOP CAMERA</button>}
         </div>
 
-        {/* AI STYLIZE */}
-        <div className="fgroup">
-          <div className="ttl">CARICATURE · GEMINI</div>
-          <textarea
-            className="prompt"
-            value={prompt}
-            spellCheck={false}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
+        {/* STEP 2 — CARICATURE */}
+        <div className={"step" + (step2Locked ? " locked" : "")}>
+          <div className="step__head clickable" onClick={() => setPromptOpen((o) => !o)}>
+            <span className="step__num">2</span>
+            <span className="step__title">CARICATURE · GEMINI</span>
+            <span className="spacer" />
+            <span className="chev">{promptOpen ? "▾" : "▸"}</span>
+          </div>
+          {promptOpen && (
+            <textarea
+              ref={taRef}
+              className="prompt"
+              value={prompt}
+              spellCheck={false}
+              onChange={(e) => setPrompt(e.target.value)}
+            />
+          )}
           <button
             className="key teal block"
             disabled={!source || busy}
@@ -202,16 +240,15 @@ export function FaceTool() {
           >
             {busy ? "◴ STYLIZING…" : "▶ STYLIZE"}
           </button>
-          <div className="note">
-            STYLE REF {styleRef ? "· LOADED" : "· NONE (add public/style-ref.webp)"}
-            {" · "}144PX · 2-COLOR
-          </div>
           {error && <div className="note err">⚠ {error}</div>}
         </div>
 
-        {/* LEVELS + THRESHOLD (PX size + dither pattern fixed) */}
-        <div className="fgroup">
-          <div className="ttl">LEVELS · 144PX</div>
+        {/* STEP 3 — LEVELS */}
+        <div className={"step" + (step3Locked ? " locked" : "")}>
+          <div className="step__head">
+            <span className="step__num">3</span>
+            <span className="step__title">LEVELS · 144PX</span>
+          </div>
           <Slider label="BLACK PT" value={blackPoint} min={0} max={254}
             onChange={(v) => setBlackPoint(Math.min(v, whitePoint - 1))} />
           <Slider label="WHITE PT" value={whitePoint} min={1} max={255}
@@ -232,7 +269,6 @@ export function FaceTool() {
           >
             ▼ EXPORT PNG
           </button>
-          <div className="note">TRANSPARENT · HEAD CUT OUT</div>
         </div>
 
         <input
@@ -260,12 +296,12 @@ export function FaceTool() {
           />
           {!camOn && hasBase && <canvas ref={previewRef} className="face__preview" />}
           {!camOn && !hasBase && (
-            <div className="stage__empty">
+            <button className="stage__empty stage__empty--btn" onClick={flashInputStep}>
               <div>
                 <div className="glyph">☺</div>
                 <div className="big">CAPTURE OR UPLOAD A FACE</div>
               </div>
-            </div>
+            </button>
           )}
         </div>
         <div className="stage__hud" style={{ position: "absolute", left: 22, bottom: 14 }}>
