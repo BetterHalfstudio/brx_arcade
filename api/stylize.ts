@@ -43,13 +43,30 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const parts: any[] = [{ text: prompt && prompt.trim() ? prompt : DEFAULT_PROMPT }];
+  // Label every image so the model can't confuse the subject photo with the
+  // style reference (the reference also contains a face). Subject first (anchors
+  // the likeness being redrawn), then each style reference flagged style-only,
+  // then the instruction.
+  const parts: any[] = [];
+  parts.push({
+    text:
+      "IMAGE 1 — SUBJECT PHOTO. This is the real person to redraw; preserve " +
+      "their likeness. Redraw THIS person:",
+  });
   parts.push({ inline_data: { mime_type: mimeType, data: image } });
   for (const r of styleRefs) {
     if (r && r.data) {
+      parts.push({
+        text:
+          "IMAGE 2 — ART STYLE REFERENCE ONLY. Copy this illustration style " +
+          "exactly (linework, shading, palette, finish, framing). Do NOT use " +
+          "the person, face, or identity shown in this reference — it is purely " +
+          "a style guide, not the subject:",
+      });
       parts.push({ inline_data: { mime_type: r.mimeType || "image/png", data: r.data } });
     }
   }
+  parts.push({ text: prompt && prompt.trim() ? prompt : DEFAULT_PROMPT });
 
   const payload = {
     contents: [{ role: "user", parts }],

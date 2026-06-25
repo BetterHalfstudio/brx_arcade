@@ -8,7 +8,7 @@ import { FaceTool } from "./tools/FaceTool";
 
 export default function App() {
   const route = useHashRoute();
-  const [faceVersion, setFaceVersion] = useState(1);
+  const [faceVersion, setFaceVersion] = useState(2);
   return (
     <div className="shell">
       <TopNav route={route} faceVersion={faceVersion} onFaceVersion={setFaceVersion} />
