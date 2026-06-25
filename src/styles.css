@@ -944,6 +944,7 @@ input[type="range"].hot::-moz-range-thumb {
   inset: 0;
   z-index: 2;
   cursor: default;
+  touch-action: none; /* canvas owns drag/pinch; don't scroll the page */
 }
 .stage__hud {
   position: absolute;
@@ -1135,4 +1136,107 @@ input[type="range"].hot::-moz-range-thumb {
 }
 .modal__actions .key {
   padding: 7px 14px;
+}
+
+/* ============================================================================
+   MOBILE — stack canvas over scrollable controls; bigger touch targets
+   ============================================================================ */
+@media (max-width: 760px) {
+  /* tool layout: column — canvas on top, controls scroll below */
+  .app {
+    flex-direction: column;
+  }
+  /* canvas on top, controls scroll below (regardless of DOM order) */
+  .stage {
+    order: 0;
+    flex: none;
+    height: 46vh;
+    min-height: 220px;
+    padding: 12px 12px 28px;
+  }
+  .panel {
+    order: 1;
+    width: 100%;
+    min-width: 0;
+    flex: 1;
+    min-height: 0;
+    border-right: none;
+    border-top: var(--hairline) solid var(--line);
+    scrollbar-gutter: auto;
+  }
+  .panel::-webkit-scrollbar {
+    width: 0;
+  }
+
+  /* nav: compact, drop the decorative blip */
+  .nav {
+    gap: 10px;
+    padding: 0 10px;
+  }
+  .nav__brand {
+    font-size: 14px;
+    letter-spacing: 0.1em;
+  }
+  .nav__tab {
+    padding: 7px 9px;
+  }
+  .nav .blip {
+    display: none;
+  }
+
+  /* HUD: small + wraps, never overlaps */
+  .stage__hud {
+    left: 12px !important;
+    bottom: 8px !important;
+    gap: 8px;
+    font-size: var(--fs-micro);
+    flex-wrap: wrap;
+    max-width: calc(100% - 24px);
+  }
+
+  /* face preview fits the shorter stage */
+  .stage__frame.face {
+    min-width: 0;
+    min-height: 0;
+  }
+  .face__preview,
+  .face__video {
+    height: min(40vh, 360px);
+  }
+
+  /* roomier tap targets */
+  .section__head {
+    padding: 13px var(--pad);
+  }
+  .key {
+    padding: 9px 10px;
+  }
+  .key.sm {
+    padding: 6px 8px;
+  }
+  input[type="range"] {
+    height: 26px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    width: 12px;
+    height: 22px;
+    margin-top: -8px;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 22px;
+  }
+  .palette .chip,
+  .palette .add {
+    width: 26px;
+    height: 26px;
+  }
+
+  /* keep export reachable without scrolling the whole panel */
+  .export {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    border-top: var(--hairline) solid var(--line);
+  }
 }

@@ -31,6 +31,12 @@ export function CanvasStage({
   const crtRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const drag = useRef<DragMode>({ kind: "none" });
+  // multi-touch: active pointers (client coords) + pinch-to-scale session
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinch = useRef<
+    | { startDist: number; startScale: number; startMidX: number; startMidY: number; ox: number; oy: number }
+    | null
+  >(null);
   const [dragOver, setDragOver] = useState(false);
 
   // keep latest state for imperative pointer handlers
@@ -87,19 +93,48 @@ export function CanvasStage({
   }
 
   // --- pointer mapping -------------------------------------------------------
-  function toSource(e: React.PointerEvent | React.MouseEvent) {
+  function clientToSource(clientX: number, clientY: number) {
     const rect = overlayRef.current!.getBoundingClientRect();
     const sx = CANVAS_W / rect.width;
+    return { x: (clientX - rect.left) * sx, y: (clientY - rect.top) * sx };
+  }
+  function toSource(e: React.PointerEvent | React.MouseEvent) {
+    return clientToSource(e.clientX, e.clientY);
+  }
+  const clampScale = (v: number) => Math.max(0.02, Math.min(64, v));
+  // distance + midpoint (client coords) of the two active pointers
+  function twoPointerInfo() {
+    const [a, b] = [...pointers.current.values()];
     return {
-      x: (e.clientX - rect.left) * sx,
-      y: (e.clientY - rect.top) * sx,
-      cssScale: rect.width / CANVAS_W,
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+      midX: (a.x + b.x) / 2,
+      midY: (a.y + b.y) / 2,
     };
   }
 
   function onPointerDown(e: React.PointerEvent) {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const s = stateRef.current;
     if (!s.layer.image) return;
+
+    // two fingers → pinch-to-scale + two-finger pan
+    if (pointers.current.size === 2) {
+      if (!s.selected) store.patch({ selected: true });
+      drag.current = { kind: "none" };
+      const info = twoPointerInfo();
+      const mid = clientToSource(info.midX, info.midY);
+      pinch.current = {
+        startDist: info.dist || 1,
+        startScale: s.layer.scale,
+        startMidX: mid.x,
+        startMidY: mid.y,
+        ox: s.layer.x,
+        oy: s.layer.y,
+      };
+      capture(e);
+      return;
+    }
+
     const eng = engineRef.current!;
     const p = toSource(e);
 
@@ -118,7 +153,7 @@ export function CanvasStage({
     const corners: [number, number][] = [
       [r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h],
     ];
-    const HANDLE = 9;
+    const HANDLE = e.pointerType === "touch" ? 22 : 9; // bigger hit area on touch
     const onHandle =
       s.selected && corners.some(([hx, hy]) => Math.abs(px - hx) <= HANDLE && Math.abs(py - hy) <= HANDLE);
 
@@ -143,6 +178,21 @@ export function CanvasStage({
   }
 
   function onPointerMove(e: React.PointerEvent) {
+    if (pointers.current.has(e.pointerId))
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // pinch: scale by finger spread, pan by midpoint
+    if (pinch.current && pointers.current.size >= 2) {
+      const info = twoPointerInfo();
+      const mid = clientToSource(info.midX, info.midY);
+      store.setLayer({
+        scale: clampScale((pinch.current.startScale * info.dist) / pinch.current.startDist),
+        x: pinch.current.ox + (mid.x - pinch.current.startMidX),
+        y: pinch.current.oy + (mid.y - pinch.current.startMidY),
+      });
+      return;
+    }
+
     const d = drag.current;
     if (d.kind === "none") return;
     const p = toSource(e);
@@ -150,8 +200,7 @@ export function CanvasStage({
       store.setLayer({ x: d.ox + (p.x - d.startX), y: d.oy + (p.y - d.startY) });
     } else if (d.kind === "scale") {
       const dist = Math.hypot(p.x - d.cx, p.y - d.cy);
-      const next = Math.max(0.02, Math.min(64, (d.startScale * dist) / d.startDist));
-      store.setLayer({ scale: next });
+      store.setLayer({ scale: clampScale((d.startScale * dist) / d.startDist) });
     }
   }
 
@@ -164,6 +213,8 @@ export function CanvasStage({
   }
 
   function endDrag(e: React.PointerEvent) {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
     if (drag.current.kind !== "none") {
       try {
         (e.target as Element).releasePointerCapture(e.pointerId);
