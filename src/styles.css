@@ -340,6 +340,9 @@ button {
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
+  /* reserve the scrollbar gutter so panel width never changes (keeps the
+     auto-grow prompt measurement stable when the scrollbar appears) */
+  scrollbar-gutter: stable;
   position: relative;
   z-index: 2;
 }
