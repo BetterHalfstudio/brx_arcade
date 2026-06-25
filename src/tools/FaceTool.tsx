@@ -40,9 +40,9 @@ export function FaceTool({ version }: { version: number }) {
   // tuning controls (temporary while refining v2)
   const [type, setType] = useState<DitherType>("bayer2");
   const [blackPoint, setBlackPoint] = useState(0);
-  const [whitePoint, setWhitePoint] = useState(255);
-  const [gamma, setGamma] = useState(1);
-  const [threshold, setThreshold] = useState(128);
+  const [whitePoint, setWhitePoint] = useState(165);
+  const [gamma, setGamma] = useState(0.1);
+  const [threshold, setThreshold] = useState(124);
   const [showRaw, setShowRaw] = useState(false); // before/after the dither
   const faceOpts = {
     targetH: FACE_TARGET_H,
