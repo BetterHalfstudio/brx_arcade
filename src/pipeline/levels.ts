@@ -1,10 +1,14 @@
-import type { DitherState } from "../state/types";
-
 // Stage 2 — LEVELS (pre-dither).
 // Black point / white point remap + gamma, applied per channel through a
 // 256-entry lookup table. Alpha is left untouched.
 
-export function buildLevelsLut(d: DitherState): Uint8ClampedArray {
+export interface Levels {
+  blackPoint: number;
+  whitePoint: number;
+  gamma: number;
+}
+
+export function buildLevelsLut(d: Levels): Uint8ClampedArray {
   const lut = new Uint8ClampedArray(256);
   const black = Math.min(d.blackPoint, d.whitePoint - 1);
   const white = Math.max(d.whitePoint, black + 1);

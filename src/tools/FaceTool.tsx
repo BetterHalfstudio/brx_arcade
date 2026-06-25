@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { Slider } from "../panel/controls";
 import { stylize, downscaleToBase64, type InlineImage } from "../face/api";
 import { facePixelArt, upscale } from "../face/finisher";
 import { downloadBlob, stampName } from "../export/download";
 
-// Fixed FACE settings — no user controls for these.
-const FACE_TARGET_H = 144; // sprite height
-const FACE_TYPE = "bayer2" as const; // B2 ordered dither
-const FACE_PALETTE = ["#000000", "#ff3d00"]; // two colours: black + FF3D00
+// Fixed: sprite height, dither pattern, and the two output colours.
+// Only levels + threshold are adjustable.
+const FACE_TARGET_H = 144; // px — fixed (no control)
+const FACE_TYPE = "bayer2" as const; // B2 — fixed (no control)
+const FACE_DARK = "#000000"; // "off" tone
+const FACE_LIT = "#ff3d00"; // "on" tone
 const STYLE_REF_URL = "/style-ref.webp"; // bundled, sent with every call
 
 const DEFAULT_PROMPT =
@@ -25,6 +28,22 @@ export function FaceTool() {
   const [styleRef, setStyleRef] = useState<InlineImage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // levels + threshold (PX size and dither pattern stay fixed)
+  const [blackPoint, setBlackPoint] = useState(0);
+  const [whitePoint, setWhitePoint] = useState(255);
+  const [gamma, setGamma] = useState(1);
+  const [threshold, setThreshold] = useState(128);
+  const faceOpts = {
+    targetH: FACE_TARGET_H,
+    type: FACE_TYPE,
+    blackPoint,
+    whitePoint,
+    gamma,
+    threshold,
+    dark: FACE_DARK,
+    lit: FACE_LIT,
+  };
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -130,26 +149,19 @@ export function FaceTool() {
       cv.width = cv.height = 0;
       return;
     }
-    const sprite = facePixelArt(base, {
-      targetH: FACE_TARGET_H,
-      palette: FACE_PALETTE,
-      type: FACE_TYPE,
-    });
+    const sprite = facePixelArt(base, faceOpts);
     cv.width = sprite.width;
     cv.height = sprite.height;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, cv.width, cv.height);
     ctx.drawImage(sprite, 0, 0);
-  }, [source, result]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, result, blackPoint, whitePoint, gamma, threshold]);
 
   function onExport() {
     const base = result || source;
     if (!base) return;
-    const sprite = facePixelArt(base, {
-      targetH: FACE_TARGET_H,
-      palette: FACE_PALETTE,
-      type: FACE_TYPE,
-    });
+    const sprite = facePixelArt(base, faceOpts);
     const factor = Math.max(1, Math.round(512 / sprite.height));
     upscale(sprite, factor).toBlob((b) => b && downloadBlob(b, stampName()), "image/png");
   }
@@ -192,9 +204,22 @@ export function FaceTool() {
           </button>
           <div className="note">
             STYLE REF {styleRef ? "· LOADED" : "· NONE (add public/style-ref.webp)"}
-            {" · "}144PX · B2 · 2-COLOR
+            {" · "}144PX · 2-COLOR
           </div>
           {error && <div className="note err">⚠ {error}</div>}
+        </div>
+
+        {/* LEVELS + THRESHOLD (PX size + dither pattern fixed) */}
+        <div className="fgroup">
+          <div className="ttl">LEVELS · 144PX</div>
+          <Slider label="BLACK PT" value={blackPoint} min={0} max={254}
+            onChange={(v) => setBlackPoint(Math.min(v, whitePoint - 1))} />
+          <Slider label="WHITE PT" value={whitePoint} min={1} max={255}
+            onChange={(v) => setWhitePoint(Math.max(v, blackPoint + 1))} />
+          <Slider label="GAMMA" value={gamma} min={0.1} max={3} step={0.01}
+            fmt={(v) => v.toFixed(2)} onChange={setGamma} />
+          <Slider label="THRESHOLD" value={threshold} min={0} max={255}
+            onChange={setThreshold} />
         </div>
 
         {/* EXPORT */}

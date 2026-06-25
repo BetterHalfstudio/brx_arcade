@@ -1,6 +1,7 @@
 import { dither } from "../pipeline/dither";
+import { buildLevelsLut, applyLevels } from "../pipeline/levels";
 import type { DitherType } from "../state/types";
-import { paletteToBytes } from "../util/color";
+import { paletteToBytes, hexToRgb } from "../util/color";
 
 // The "pixel lock": the deterministic finisher that normalizes any stylized
 // output to a fixed sprite resolution + palette + dither, so every caricature
@@ -94,14 +95,25 @@ export function removeBorderBackground(
   }
 }
 
+export interface FaceOpts {
+  targetH: number; // sprite height (fixed at the call site)
+  type: DitherType;
+  blackPoint: number;
+  whitePoint: number;
+  gamma: number;
+  threshold: number; // black/lit cutoff
+  dark: string; // "off" colour (black)
+  lit: string; // "on" colour (#FF3D00)
+}
+
 /**
- * The fixed FACE finisher: downscale to a sprite, knock out the background, and
- * snap the head to the two-colour palette with ordered dithering. Returns a
- * transparent-background sprite canvas.
+ * The FACE finisher: downscale → knock out the background → levels → 1-bit
+ * ordered/FS dither (threshold-controlled) → remap the two tones to dark + lit.
+ * Returns a transparent-background, exactly-two-colour sprite canvas.
  */
 export function facePixelArt(
   source: HTMLImageElement | HTMLCanvasElement,
-  opts: { targetH: number; palette: string[]; type: DitherType }
+  opts: FaceOpts
 ): HTMLCanvasElement {
   const sw = (source as HTMLCanvasElement).width || (source as HTMLImageElement).naturalWidth;
   const sh = (source as HTMLCanvasElement).height || (source as HTMLImageElement).naturalHeight;
@@ -118,13 +130,26 @@ export function facePixelArt(
 
   const img = ctx.getImageData(0, 0, tw, th);
   removeBorderBackground(img.data, tw, th);
+  applyLevels(img.data, buildLevelsLut(opts));
+  // 1-bit dither: luma vs threshold, with the selected dither pattern
   dither(img.data, tw, th, {
     type: opts.type,
-    mode: "palette",
-    threshold: 128,
-    palette: paletteToBytes(opts.palette),
-    paletteCount: opts.palette.length,
+    mode: "bw",
+    threshold: opts.threshold,
+    palette: new Uint8Array(0),
+    paletteCount: 0,
   });
+  // remap the two tones to dark / lit (alpha preserved)
+  const lit = hexToRgb(opts.lit);
+  const dark = hexToRgb(opts.dark);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const on = d[i] > 127;
+    d[i] = on ? lit.r : dark.r;
+    d[i + 1] = on ? lit.g : dark.g;
+    d[i + 2] = on ? lit.b : dark.b;
+  }
   ctx.putImageData(img, 0, 0);
   return c;
 }
