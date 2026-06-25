@@ -29,10 +29,13 @@ const V2_PROMPT =
   "colour), bold cel shading with subtle painterly texture and a clean white " +
   "keyline around the figure.\n\n" +
   "Avoid the big anime eyes from the reference but otherwise keep the style of " +
-  "the reference image with the cartoony proportions. Slightly exaggerate and " +
+  "the reference image with the cartoony proportions. Strongly exaggerate and " +
   "distort the most prominent features (nose, jaw, brow, ears, hairline) for a " +
-  "bold, characterful, slightly comic exaggeration, while keeping the person " +
-  "clearly recognizable and stylistically the same as the reference image. " +
+  "bold, characterful, comic caricature — push the exaggeration noticeably " +
+  "further than a subtle likeness — while keeping the person clearly " +
+  "recognizable and stylistically the same as the reference image. Also " +
+  "slightly exaggerate the character's facial expression, pushing their " +
+  "natural expression a little further for more personality. " +
   "Relight the character to match the lighting, black-and-white levels and " +
   "contrast of the reference image. Place the figure on a completely solid, " +
   "uniform #0047BB blue background — no other colors, no texture, no scenery, " +
@@ -53,7 +56,8 @@ export const FACE_VERSIONS: FaceVersion[] = [
     id: 2,
     label: "V2",
     prompts: [{ label: "V2", text: V2_PROMPT }],
-    styleRef: "/style-ref-2.png",
+    // ?v bump busts the browser cache when the reference image is updated
+    styleRef: "/style-ref-2.png?v=2",
     bg: "chroma",
   },
 ];
