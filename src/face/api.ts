@@ -6,9 +6,19 @@ export interface InlineImage {
   mimeType: string;
 }
 
+export interface StylizeDebug {
+  model: string;
+  sent: Array<
+    | { kind: "text"; chars: number; preview: string }
+    | { kind: "image"; mimeType: string; approxKB: number }
+  >;
+  usage: { promptTokenCount?: number; totalTokenCount?: number } | null;
+}
+
 export interface StylizeResult {
   image: string; // base64
   mimeType: string;
+  debug?: StylizeDebug;
 }
 
 export async function stylize(

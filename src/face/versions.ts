@@ -24,25 +24,40 @@ const V1_PROMPT =
   "background, no text. Match the style of any reference images.";
 
 const V2_PROMPT =
-  "Redraw this person as a caricature in the exact style of the single attached " +
-  "reference image: flat, illustrative BLACK AND WHITE (grayscale only, no " +
-  "colour), bold cel shading with subtle painterly texture and a clean white " +
-  "keyline around the figure.\n\n" +
-  "Avoid the big anime eyes from the reference but otherwise keep the style of " +
-  "the reference image with the cartoony proportions. Strongly exaggerate and " +
-  "distort the most prominent features (nose, jaw, brow, ears, hairline) for a " +
-  "bold, characterful, comic caricature — push the exaggeration noticeably " +
-  "further than a subtle likeness — while keeping the person clearly " +
-  "recognizable and stylistically the same as the reference image. Also " +
-  "slightly exaggerate the character's facial expression, pushing their " +
-  "natural expression a little further for more personality. " +
-  "Relight the character to match the lighting, black-and-white levels and " +
-  "contrast of the reference image. Place the figure on a completely solid, " +
-  "uniform #0047BB blue background — no other colors, no texture, no scenery, " +
-  "nothing floating. Frame it like an icon cropped at the upper chest: do not " +
-  "cut the body off with a straight horizontal line — let the bottom edge " +
-  "follow the natural silhouette of the shoulders, collar or hair, and keep " +
-  "that crop point consistent. Centered, no text.";
+  "Create an original editorial caricature portrait of the supplied person.\n\n" +
+  "Use the attached image only as a style reference. Match its visual language, " +
+  "rendering, lighting, shading, contrast, brushwork, composition, and graphic " +
+  "design, but do not recreate, trace, or closely copy the reference image. " +
+  "Create a completely new illustration in the same artistic style.\n\n" +
+  "The highest priority is preserving the subject's identity while redesigning " +
+  "their face as a bold caricature. Aggressively exaggerate the person's most " +
+  "distinctive facial features—including head shape, jaw, chin, brow, nose, " +
+  "ears, forehead, cheekbones, hairline, hairstyle, neck, and facial " +
+  "proportions. Push the exaggeration well beyond a subtle likeness, " +
+  "prioritizing strong shape design over realism, while keeping the person " +
+  "immediately recognizable.\n\n" +
+  "Maintain the style of the reference: flat graphic illustration, grayscale " +
+  "only, high contrast, large angular shadow shapes, crisp cel shading, minimal " +
+  "gradients, subtle dry-brush texture within the shadows, and a thick clean " +
+  "white outline surrounding the entire silhouette.\n\n" +
+  "Use a single hard key light from the upper left, producing bold directional " +
+  "lighting with large connected shadow masses, deep blacks, bright whites, " +
+  "almost no midtones, and very little ambient fill. Keep this lighting " +
+  "identical across every portrait regardless of the subject.\n\n" +
+  "Avoid oversized anime eyes. Instead, use medium-sized simplified graphic " +
+  "eyes with angular shapes, thick expressive eyebrows, a simplified nose and " +
+  "mouth, chunky graphic hair masses, and slightly exaggerated facial " +
+  "expressions that enhance the subject's natural personality without changing " +
+  "the underlying emotion.\n\n" +
+  "Frame the portrait consistently: centered, facing forward, cropped at the " +
+  "upper chest with the bottom edge following the natural silhouette of the " +
+  "shoulders or clothing rather than a straight horizontal cut. Use a large " +
+  "head, narrow neck, and simplified shoulders.\n\n" +
+  "Place the portrait on a completely flat, solid #0047BB blue background. No " +
+  "gradients, textures, patterns, objects, scenery, text, or additional " +
+  "colors.\n\n" +
+  "This should look like a fresh caricature drawn by the same artist—not a " +
+  "grayscale copy of the reference image.";
 
 export const FACE_VERSIONS: FaceVersion[] = [
   {

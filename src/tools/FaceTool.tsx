@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Slider, Toggle, Segmented } from "../panel/controls";
 import type { DitherType } from "../state/types";
-import { stylize, downscaleToBase64, type InlineImage } from "../face/api";
+import { stylize, downscaleToBase64, type InlineImage, type StylizeDebug } from "../face/api";
 import { facePixelArt, upscale } from "../face/finisher";
 import { downloadBlob, stampName } from "../export/download";
 import { faceVersion } from "../face/versions";
@@ -34,6 +34,7 @@ export function FaceTool({ version }: { version: number }) {
   const [styleRefOverride, setStyleRefOverride] = useState<RefOverride | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<StylizeDebug | null>(null);
   const [flash, setFlash] = useState(false);
 
   // tuning controls (temporary while refining v2)
@@ -200,6 +201,10 @@ export function FaceTool({ version }: { version: number }) {
         prompt,
         ref ? [{ data: ref.data, mimeType: ref.mimeType }] : []
       );
+      if (out.debug) {
+        console.log("[stylize] exact request sent to Gemini:", out.debug);
+        setSent(out.debug);
+      }
       const img = new Image();
       img.onload = () => {
         setResult(img);
@@ -256,6 +261,15 @@ export function FaceTool({ version }: { version: number }) {
   }
 
   const refThumb = styleRefOverride?.url || cfg.styleRef;
+
+  // proof summary from the last stylize request (images[1] = the style ref)
+  const sentImgs = sent
+    ? (sent.sent.filter((p) => p.kind === "image") as {
+        kind: "image";
+        mimeType: string;
+        approxKB: number;
+      }[])
+    : [];
 
   return (
     <div className={"app" + (flash ? " attention" : "")}>
@@ -322,6 +336,14 @@ export function FaceTool({ version }: { version: number }) {
           >
             {busy ? "◴ STYLIZING…" : "▶ STYLIZE"}
           </button>
+          {sent && (
+            <div className="note">
+              ✓ GEMINI GOT {sentImgs.length} IMAGES
+              {sentImgs[1] ? ` · STYLE REF ${sentImgs[1].approxKB}KB` : ""}
+              {sent.usage?.promptTokenCount ? ` · ${sent.usage.promptTokenCount} INPUT TOKENS` : ""}
+              {" "}(full payload in console)
+            </div>
+          )}
           {error && <div className="note err">⚠ {error}</div>}
         </div>
 

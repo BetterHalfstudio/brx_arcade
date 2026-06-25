@@ -73,6 +73,18 @@ export default async function handler(req: any, res: any) {
     generationConfig: { responseModalities: ["IMAGE"] },
   };
 
+  // Exactly what we send Gemini, so the client can prove the reference is in
+  // the request, in the right slot, labeled correctly.
+  const sentParts = parts.map((p: any) =>
+    p.text
+      ? { kind: "text", chars: p.text.length, preview: p.text.slice(0, 80) }
+      : {
+          kind: "image",
+          mimeType: p.inline_data.mime_type,
+          approxKB: Math.round((p.inline_data.data.length * 3) / 4 / 1024),
+        }
+  );
+
   try {
     const r = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
@@ -95,7 +107,13 @@ export default async function handler(req: any, res: any) {
       res.status(502).json({ error: text || "No image returned by the model." });
       return;
     }
-    res.status(200).json({ image: out.data, mimeType: out.mime_type || out.mimeType || "image/png" });
+    res.status(200).json({
+      image: out.data,
+      mimeType: out.mime_type || out.mimeType || "image/png",
+      // proof: ordered request structure + Gemini's own input-token count
+      // (promptTokenCount only rises if it actually received the images)
+      debug: { model: MODEL, sent: sentParts, usage: j?.usageMetadata || null },
+    });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "request failed" });
   }
