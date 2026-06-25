@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { Panel } from "../panel/Panel";
 import { CanvasStage } from "../canvas/CanvasStage";
@@ -16,6 +16,20 @@ export function DitherTool() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<Pending>(null);
   const hasImage = !!store.state.layer.image;
+
+  // Delete / Backspace removes the placed image (ignored while typing).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))
+        return;
+      e.preventDefault();
+      store.clearImage();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [store.clearImage]);
 
   function decodeAndLoad(file: File) {
     if (!file.type.startsWith("image/")) return;

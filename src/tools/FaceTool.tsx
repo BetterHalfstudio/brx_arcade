@@ -3,28 +3,25 @@ import { Slider } from "../panel/controls";
 import { stylize, downscaleToBase64, type InlineImage } from "../face/api";
 import { facePixelArt, upscale } from "../face/finisher";
 import { downloadBlob, stampName } from "../export/download";
+import { faceVersion } from "../face/versions";
 
 // Fixed: sprite height, dither pattern, and the two output colours.
-// Only levels + threshold are adjustable.
+// Only levels + threshold are adjustable. Prompt / style-ref / background mode
+// come from the selected version.
 const FACE_TARGET_H = 144; // px — fixed (no control)
 const FACE_TYPE = "bayer2" as const; // B2 — fixed (no control)
-const FACE_DARK = "#000000"; // "off" tone
-const FACE_LIT = "#ff3d00"; // "on" tone
-const STYLE_REF_URL = "/style-ref.webp"; // bundled, sent with every call
-
-const DEFAULT_PROMPT =
-  "Redraw this person as a caricature: slightly exaggerate their most " +
-  "distinctive features while keeping them recognizable. Flat illustrated " +
-  "style, clean cel shading, limited palette, head-and-shoulders, transparent " +
-  "background, no text. Match the style of any reference images.";
+const FACE_DARK = "#000000";
+const FACE_LIT = "#ff3d00";
 
 type Source = HTMLImageElement | HTMLCanvasElement;
 
-export function FaceTool() {
+export function FaceTool({ version }: { version: number }) {
+  const cfg = faceVersion(version);
+
   const [source, setSource] = useState<Source | null>(null);
   const [result, setResult] = useState<HTMLImageElement | null>(null);
   const [camOn, setCamOn] = useState(false);
-  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
+  const [prompt, setPrompt] = useState(cfg.prompt);
   const [promptOpen, setPromptOpen] = useState(false);
   const [styleRef, setStyleRef] = useState<InlineImage | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,6 +42,7 @@ export function FaceTool() {
     threshold,
     dark: FACE_DARK,
     lit: FACE_LIT,
+    bg: cfg.bg,
   };
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -55,11 +53,11 @@ export function FaceTool() {
   const flashTimer = useRef<number | undefined>(undefined);
 
   // progressive gating
-  const step2Locked = !source; // step 1 complete = a face is loaded
-  const step3Locked = !result; // step 2 complete = a caricature exists
+  const step2Locked = !source;
+  const step3Locked = !result;
   const hasBase = !!(source || result);
 
-  // --- load the bundled style reference once ---------------------------------
+  // load the version's style reference (reloads when version changes)
   useEffect(() => {
     let cancelled = false;
     const img = new Image();
@@ -67,18 +65,23 @@ export function FaceTool() {
       if (!cancelled) setStyleRef(downscaleToBase64(img, 768, "image/png", 1));
     };
     img.onerror = () => {};
-    img.src = STYLE_REF_URL;
+    img.src = cfg.styleRef;
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [cfg.styleRef]);
+
+  // switching version loads that version's default prompt
+  useEffect(() => {
+    setPrompt(cfg.prompt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
 
   // auto-grow the prompt textarea to fit its content (no scrolling)
   useEffect(() => {
     const ta = taRef.current;
     if (promptOpen && ta) {
       ta.style.height = "auto";
-      // add the border (box-sizing: border-box) so content fully fits, no scroll
       const borderY = ta.offsetHeight - ta.clientHeight;
       ta.style.height = ta.scrollHeight + borderY + "px";
     }
@@ -86,7 +89,22 @@ export function FaceTool() {
 
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
 
-  // momentarily glow the INPUT step + dull everything else
+  // Delete / Backspace clears the current face (ignored while typing)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))
+        return;
+      e.preventDefault();
+      setSource(null);
+      setResult(null);
+      stopCam();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   function flashInputStep() {
     setFlash(true);
     window.clearTimeout(flashTimer.current);
@@ -185,7 +203,7 @@ export function FaceTool() {
     ctx.clearRect(0, 0, cv.width, cv.height);
     ctx.drawImage(sprite, 0, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, result, blackPoint, whitePoint, gamma, threshold]);
+  }, [source, result, version, blackPoint, whitePoint, gamma, threshold]);
 
   function onExport() {
     const base = result || source;
@@ -306,7 +324,7 @@ export function FaceTool() {
         </div>
         <div className="stage__hud" style={{ position: "absolute", left: 22, bottom: 14 }}>
           <span><b>STAGE</b> {result ? "AI + ART" : source ? "ART (no AI yet)" : "EMPTY"}</span>
-          <span><b>OUT</b> 144PX · BLACK + FF3D00</span>
+          <span><b>VER</b> {cfg.label} · {cfg.bg.toUpperCase()} BG</span>
         </div>
       </div>
     </div>

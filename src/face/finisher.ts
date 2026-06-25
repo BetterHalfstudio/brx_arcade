@@ -104,6 +104,24 @@ export interface FaceOpts {
   threshold: number; // black/lit cutoff
   dark: string; // "off" colour (black)
   lit: string; // "on" colour (#FF3D00)
+  bg: "flood" | "chroma"; // background-removal strategy
+}
+
+/**
+ * Remove the solid BLUE chroma background (#0047BB — the v2 prompt asks for a
+ * grayscale subject on this blue). Keys blue-dominant pixels → transparent.
+ * Robust to floating pixels and fully-filled backgrounds, and leaves the
+ * grayscale subject (r≈g≈b) and any warm tint untouched, unlike flood-fill.
+ */
+export function removeChromaBackground(
+  data: Uint8ClampedArray,
+  blueBias = 40
+): void {
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    if (b > r + blueBias && b > g + blueBias) data[i + 3] = 0; // blue → bg
+  }
 }
 
 /**
@@ -129,7 +147,8 @@ export function facePixelArt(
   ctx.drawImage(source, 0, 0, tw, th);
 
   const img = ctx.getImageData(0, 0, tw, th);
-  removeBorderBackground(img.data, tw, th);
+  if (opts.bg === "chroma") removeChromaBackground(img.data);
+  else removeBorderBackground(img.data, tw, th);
   applyLevels(img.data, buildLevelsLut(opts));
   // 1-bit dither: luma vs threshold, with the selected dither pattern
   dither(img.data, tw, th, {

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useHashRoute } from "./router";
 import { TopNav } from "./components/TopNav";
 import { DitherTool } from "./tools/DitherTool";
@@ -7,11 +8,12 @@ import { FaceTool } from "./tools/FaceTool";
 
 export default function App() {
   const route = useHashRoute();
+  const [faceVersion, setFaceVersion] = useState(1);
   return (
     <div className="shell">
-      <TopNav route={route} />
+      <TopNav route={route} faceVersion={faceVersion} onFaceVersion={setFaceVersion} />
       <div className="view">
-        {route === "/face" ? <FaceTool /> : <DitherTool />}
+        {route === "/face" ? <FaceTool version={faceVersion} /> : <DitherTool />}
       </div>
     </div>
   );

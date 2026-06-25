@@ -12,8 +12,6 @@ import { Section, Slider, Toggle, Segmented } from "./controls";
 const DITHERS: { value: DitherType; label: string }[] = [
   { value: "fs", label: "FS" },
   { value: "bayer2", label: "B2" },
-  { value: "bayer4", label: "B4" },
-  { value: "bayer8", label: "B8" },
 ];
 
 const PIXEL_SIZES: { value: string; label: string }[] = [

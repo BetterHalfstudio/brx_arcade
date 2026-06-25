@@ -20,6 +20,7 @@ export interface StoreApi {
   setCRT: (p: Partial<CRTState>) => void;
   patch: (p: Partial<AppState>) => void;
   loadImage: (img: HTMLImageElement) => void;
+  clearImage: () => void;
 }
 
 export function useAppStore(): StoreApi {
@@ -36,6 +37,12 @@ export function useAppStore(): StoreApi {
       setCRT: (p: Partial<CRTState>) =>
         setState((s) => ({ ...s, crt: { ...s.crt, ...p } })),
       patch: (p: Partial<AppState>) => setState((s) => ({ ...s, ...p })),
+      clearImage: () =>
+        setState((s) => ({
+          ...s,
+          layer: { image: null, naturalW: 0, naturalH: 0, x: CANVAS_W / 2, y: CANVAS_H / 2, scale: 1 },
+          selected: false,
+        })),
       loadImage: (img: HTMLImageElement) =>
         setState((s) => {
           const w = img.naturalWidth;
