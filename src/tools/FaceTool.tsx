@@ -1,56 +1,44 @@
 import { useEffect, useRef, useState } from "react";
-import { Slider, Toggle, Segmented } from "../panel/controls";
-import type { DitherType } from "../state/types";
+import { Slider } from "../panel/controls";
 import { stylize, downscaleToBase64, type InlineImage, type StylizeDebug } from "../face/api";
 import { facePixelArt, upscale } from "../face/finisher";
 import { downloadBlob, stampName } from "../export/download";
 import { faceVersion } from "../face/versions";
 
-// Fixed: sprite height + the two output colours. Levels/threshold/dither and the
-// refine tools (raw preview, style-ref swap) are temporary tuning aids.
+// Fixed: sprite height, dither pattern, threshold, and the two output colours.
+// Only the levels (black / white / gamma) are adjustable.
 const FACE_TARGET_H = 144;
+const FACE_TYPE = "bayer2" as const;
+const FACE_THRESHOLD = 124;
 const FACE_DARK = "#000000";
 const FACE_LIT = "#ff3d00";
 
-const DITHERS: { value: DitherType; label: string }[] = [
-  { value: "fs", label: "FS" },
-  { value: "bayer2", label: "B2" },
-];
-
 type Source = HTMLImageElement | HTMLCanvasElement;
-interface RefOverride extends InlineImage {
-  url: string;
-}
 
 export function FaceTool({ version }: { version: number }) {
   const cfg = faceVersion(version);
+  const prompt = cfg.prompts[0].text; // fixed per version
 
   const [source, setSource] = useState<Source | null>(null);
   const [result, setResult] = useState<HTMLImageElement | null>(null);
   const [camOn, setCamOn] = useState(false);
-  const [prompt, setPrompt] = useState(cfg.prompts[0].text);
-  const [promptOpen, setPromptOpen] = useState(false);
   const [styleRef, setStyleRef] = useState<InlineImage | null>(null);
-  const [styleRefOverride, setStyleRefOverride] = useState<RefOverride | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<StylizeDebug | null>(null);
   const [flash, setFlash] = useState(false);
 
-  // tuning controls (temporary while refining v2)
-  const [type, setType] = useState<DitherType>("bayer2");
-  const [blackPoint, setBlackPoint] = useState(0);
-  const [whitePoint, setWhitePoint] = useState(165);
-  const [gamma, setGamma] = useState(0.1);
-  const [threshold, setThreshold] = useState(124);
-  const [showRaw, setShowRaw] = useState(false); // before/after the dither
+  // levels (only adjustable controls)
+  const [blackPoint, setBlackPoint] = useState(40);
+  const [whitePoint, setWhitePoint] = useState(224);
+  const [gamma, setGamma] = useState(0.83);
   const faceOpts = {
     targetH: FACE_TARGET_H,
-    type,
+    type: FACE_TYPE,
     blackPoint,
     whitePoint,
     gamma,
-    threshold,
+    threshold: FACE_THRESHOLD,
     dark: FACE_DARK,
     lit: FACE_LIT,
     bg: cfg.bg,
@@ -60,8 +48,6 @@ export function FaceTool({ version }: { version: number }) {
   const streamRef = useRef<MediaStream | null>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const faceFileRef = useRef<HTMLInputElement>(null);
-  const refFileRef = useRef<HTMLInputElement>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
   const flashTimer = useRef<number | undefined>(undefined);
 
   const step2Locked = !source;
@@ -81,27 +67,6 @@ export function FaceTool({ version }: { version: number }) {
       cancelled = true;
     };
   }, [cfg.styleRef]);
-
-  // switching version loads that version's default prompt + clears any override
-  useEffect(() => {
-    setPrompt(cfg.prompts[0].text);
-    setStyleRefOverride(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version]);
-
-  // auto-grow the prompt textarea to fit its content (no scrolling). Two passes
-  // (now + next frame) so it settles after layout/font reflow on preset swaps.
-  useEffect(() => {
-    const ta = taRef.current;
-    if (!promptOpen || !ta) return;
-    const fit = () => {
-      ta.style.height = "auto";
-      ta.style.height = ta.scrollHeight + (ta.offsetHeight - ta.clientHeight) + "px";
-    };
-    fit();
-    const raf = requestAnimationFrame(fit);
-    return () => cancelAnimationFrame(raf);
-  }, [promptOpen, prompt]);
 
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
 
@@ -165,7 +130,7 @@ export function FaceTool({ version }: { version: number }) {
   }
   useEffect(() => () => stopCam(), []);
 
-  // --- uploads ---------------------------------------------------------------
+  // --- upload ----------------------------------------------------------------
   function loadFace(file: File) {
     if (!file.type.startsWith("image/")) return;
     const url = URL.createObjectURL(file);
@@ -177,16 +142,6 @@ export function FaceTool({ version }: { version: number }) {
     };
     img.src = url;
   }
-  function loadStyleRef(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      const inl = downscaleToBase64(img, 768, "image/png", 1);
-      setStyleRefOverride({ ...inl, url });
-    };
-    img.src = url;
-  }
 
   // --- stylize ---------------------------------------------------------------
   async function onStylize() {
@@ -195,11 +150,10 @@ export function FaceTool({ version }: { version: number }) {
     setError(null);
     try {
       const face = downscaleToBase64(source, 768, "image/jpeg", 0.92);
-      const ref = styleRefOverride || styleRef;
       const out = await stylize(
         face,
         prompt,
-        ref ? [{ data: ref.data, mimeType: ref.mimeType }] : []
+        styleRef ? [{ data: styleRef.data, mimeType: styleRef.mimeType }] : []
       );
       if (out.debug) {
         console.log("[stylize] exact request sent to Gemini:", out.debug);
@@ -221,7 +175,7 @@ export function FaceTool({ version }: { version: number }) {
     }
   }
 
-  // --- preview: dithered art, or raw Gemini output (before/after) ------------
+  // --- pixel-art preview -----------------------------------------------------
   useEffect(() => {
     const base = result || source;
     const cv = previewRef.current;
@@ -231,26 +185,14 @@ export function FaceTool({ version }: { version: number }) {
       cv.width = cv.height = 0;
       return;
     }
-    if (showRaw) {
-      const bw = (base as HTMLImageElement).naturalWidth || (base as HTMLCanvasElement).width;
-      const bh = (base as HTMLImageElement).naturalHeight || (base as HTMLCanvasElement).height;
-      cv.width = bw;
-      cv.height = bh;
-      cv.style.imageRendering = "auto";
-      ctx.imageSmoothingEnabled = true;
-      ctx.clearRect(0, 0, bw, bh);
-      ctx.drawImage(base, 0, 0, bw, bh);
-    } else {
-      const sprite = facePixelArt(base, faceOpts);
-      cv.width = sprite.width;
-      cv.height = sprite.height;
-      cv.style.imageRendering = "pixelated";
-      ctx.imageSmoothingEnabled = false;
-      ctx.clearRect(0, 0, cv.width, cv.height);
-      ctx.drawImage(sprite, 0, 0);
-    }
+    const sprite = facePixelArt(base, faceOpts);
+    cv.width = sprite.width;
+    cv.height = sprite.height;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(sprite, 0, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, result, version, showRaw, type, blackPoint, whitePoint, gamma, threshold]);
+  }, [source, result, version, blackPoint, whitePoint, gamma]);
 
   function onExport() {
     const base = result || source;
@@ -260,9 +202,6 @@ export function FaceTool({ version }: { version: number }) {
     upscale(sprite, factor).toBlob((b) => b && downloadBlob(b, stampName()), "image/png");
   }
 
-  const refThumb = styleRefOverride?.url || cfg.styleRef;
-
-  // proof summary from the last stylize request (images[1] = the style ref)
   const sentImgs = sent
     ? (sent.sent.filter((p) => p.kind === "image") as {
         kind: "image";
@@ -293,41 +232,10 @@ export function FaceTool({ version }: { version: number }) {
 
         {/* STEP 2 — CARICATURE */}
         <div className={"step" + (step2Locked ? " locked" : "")}>
-          <div className="step__head clickable" onClick={() => setPromptOpen((o) => !o)}>
+          <div className="step__head">
             <span className="step__num">2</span>
             <span className="step__title">CARICATURE · GEMINI</span>
-            <span className="spacer" />
-            <span className="chev">{promptOpen ? "▾" : "▸"}</span>
           </div>
-          {promptOpen && (
-            <>
-              {cfg.prompts.length > 1 && (
-                <Segmented
-                  value={prompt}
-                  options={cfg.prompts.map((p) => ({ value: p.text, label: p.label }))}
-                  onChange={(t) => setPrompt(t)}
-                />
-              )}
-              <textarea
-                ref={taRef}
-                className="prompt"
-                value={prompt}
-                spellCheck={false}
-                onChange={(e) => setPrompt(e.target.value)}
-              />
-              <div className="ctl__label">
-                <span>STYLE REF</span>
-                <span className="val">{styleRefOverride ? "SWAPPED" : "DEFAULT"}</span>
-              </div>
-              <div className="colorrow">
-                <span className="swatch" style={{ background: `center/cover url(${refThumb})` }} />
-                <button className="key sm grow" onClick={() => refFileRef.current?.click()}>↑ SWAP REF</button>
-                {styleRefOverride && (
-                  <button className="key sm ghost" onClick={() => setStyleRefOverride(null)}>RESET</button>
-                )}
-              </div>
-            </>
-          )}
           <button
             className="key teal block"
             disabled={!source || busy}
@@ -341,22 +249,16 @@ export function FaceTool({ version }: { version: number }) {
               ✓ GEMINI GOT {sentImgs.length} IMAGES
               {sentImgs[1] ? ` · STYLE REF ${sentImgs[1].approxKB}KB` : ""}
               {sent.usage?.promptTokenCount ? ` · ${sent.usage.promptTokenCount} INPUT TOKENS` : ""}
-              {" "}(full payload in console)
             </div>
           )}
           {error && <div className="note err">⚠ {error}</div>}
         </div>
 
-        {/* STEP 3 — LEVELS + tuning (temporary) */}
+        {/* STEP 3 — LEVELS */}
         <div className={"step" + (step3Locked ? " locked" : "")}>
           <div className="step__head">
             <span className="step__num">3</span>
-            <span className="step__title">LEVELS · 144PX</span>
-          </div>
-          <Toggle label="RAW PREVIEW (PRE-DITHER)" on={showRaw} onChange={setShowRaw} />
-          <div className="ctl">
-            <div className="ctl__label"><span>DITHER</span></div>
-            <Segmented value={type} options={DITHERS} onChange={setType} />
+            <span className="step__title">LEVELS</span>
           </div>
           <Slider label="BLACK PT" value={blackPoint} min={0} max={254}
             onChange={(v) => setBlackPoint(Math.min(v, whitePoint - 1))} />
@@ -364,8 +266,6 @@ export function FaceTool({ version }: { version: number }) {
             onChange={(v) => setWhitePoint(Math.max(v, blackPoint + 1))} />
           <Slider label="GAMMA" value={gamma} min={0.1} max={3} step={0.01}
             fmt={(v) => v.toFixed(2)} onChange={setGamma} />
-          <Slider label="THRESHOLD" value={threshold} min={0} max={255}
-            onChange={setThreshold} />
         </div>
 
         {/* EXPORT */}
@@ -388,17 +288,6 @@ export function FaceTool({ version }: { version: number }) {
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) loadFace(f);
-            e.target.value = "";
-          }}
-        />
-        <input
-          ref={refFileRef}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) loadStyleRef(f);
             e.target.value = "";
           }}
         />
@@ -425,7 +314,7 @@ export function FaceTool({ version }: { version: number }) {
           )}
         </div>
         <div className="stage__hud" style={{ position: "absolute", left: 22, bottom: 14 }}>
-          <span><b>STAGE</b> {showRaw ? "RAW (PRE-DITHER)" : result ? "AI + ART" : source ? "ART (no AI yet)" : "EMPTY"}</span>
+          <span><b>STAGE</b> {result ? "AI + ART" : source ? "ART (no AI yet)" : "EMPTY"}</span>
           <span><b>VER</b> {cfg.label} · {cfg.bg.toUpperCase()} BG</span>
         </div>
       </div>
