@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { StoreApi } from "../state/store";
 import type { DitherType, GradientStop } from "../state/types";
-import { STOPS_MAX } from "../state/types";
+import { STOPS_MAX, PIXEL_LOCK_COLORS_MIN, PIXEL_LOCK_COLORS_MAX } from "../state/types";
 import { DEFAULT_PALETTES, paletteToStops } from "../state/defaults";
 import { ditherGradient } from "../pipeline/dither";
 import { isValidHex, hexToRgb } from "../util/color";
@@ -26,10 +26,13 @@ export function Panel({
   store,
   onExport,
   onAddImage,
+  onRedetect,
 }: {
   store: StoreApi;
   onExport: () => void;
   onAddImage: () => void;
+  /** re-run pixel-grid auto-detection on the current image */
+  onRedetect: () => void;
 }) {
   const { state, setDither, setColor, setCRT, patch } = store;
   const [open, setOpen] = useState({
@@ -38,6 +41,8 @@ export function Panel({
     crt: false,
     roadmap: false,
   });
+  // nested Pixel-Lock settings dropdown (open by default when the mode is on)
+  const [plOpen, setPlOpen] = useState(true);
   const toggle = (k: keyof typeof open) =>
     setOpen((o) => ({ ...o, [k]: !o[k] }));
 
@@ -47,6 +52,12 @@ export function Panel({
 
   // pure black & white only when no recolor is active
   const bwMode = !c.originalColors && !c.gradientMapOn;
+
+  // ---- pixel-lock derived readout (native grid the current cell resolves to) --
+  const plCell = Math.max(1, Math.round(d.pixelLockSize));
+  const plGridW = state.layer.naturalW ? Math.max(1, Math.round(state.layer.naturalW / plCell)) : 0;
+  const plGridH = state.layer.naturalH ? Math.max(1, Math.round(state.layer.naturalH / plCell)) : 0;
+  const plIsAuto = plCell === Math.round(d.pixelLockAuto);
 
   const setOriginal = (v: boolean) => setColor({ originalColors: v });
   const setGradientOn = (v: boolean) => setColor({ gradientMapOn: v });
@@ -81,24 +92,99 @@ export function Panel({
         title="PIXELIZE / DITHER"
         open={open.dither}
         onToggle={() => toggle("dither")}
+        pip={d.pixelLock ? "hot" : "off"}
       >
-        <div className="ctl">
-          <div className="ctl__label">
-            <span>DITHER</span>
+        <Toggle
+          label="PIXEL-LOCK"
+          on={d.pixelLock}
+          hot
+          onChange={(v) => setDither({ pixelLock: v })}
+        />
+
+        {d.pixelLock ? (
+          /* Snap AI pixel-art to its native grid instead of dithering. The
+             AI-pixel-art controls live in their own dropdown to stay tidy. */
+          <div className={"subsec" + (plOpen ? " open" : "")}>
+            <div
+              className="subsec__head"
+              role="button"
+              tabIndex={0}
+              onClick={() => setPlOpen((o) => !o)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setPlOpen((o) => !o);
+                }
+              }}
+            >
+              <span className="chev">{plOpen ? "▾" : "▸"}</span>
+              <span>PIXEL-LOCK · AI ART</span>
+              <span className="spacer" />
+              <span className="val">{plGridW ? `${plGridW}×${plGridH}` : "—"}</span>
+            </div>
+            {plOpen && (
+              <div className="subsec__body">
+                <div className="ctl">
+                  <div className="ctl__label">
+                    <span>PIXEL SIZE</span>
+                    <span className="val">{plCell}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    className="hot"
+                    min={1}
+                    max={64}
+                    step={1}
+                    value={plCell}
+                    onChange={(e) => setDither({ pixelLockSize: Number(e.target.value) })}
+                  />
+                </div>
+                <Slider
+                  label="COLORS"
+                  value={d.pixelLockColors}
+                  min={PIXEL_LOCK_COLORS_MIN}
+                  max={PIXEL_LOCK_COLORS_MAX}
+                  hot
+                  onChange={(v) => setDither({ pixelLockColors: v })}
+                />
+                <div className="row">
+                  <button className="key sm ghost" onClick={onRedetect} disabled={!state.layer.image}>
+                    ◎ RE-DETECT
+                  </button>
+                  <div className="note" style={{ margin: 0, flex: 1, textAlign: "right" }}>
+                    {plGridW ? (
+                      <>
+                        GRID {plGridW}×{plGridH} · {plIsAuto ? "AUTO ✓" : "MANUAL"}
+                      </>
+                    ) : (
+                      "NO IMAGE"
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          <Segmented value={d.type} options={DITHERS} onChange={(t) => setDither({ type: t })} />
-        </div>
-        <div className="ctl">
-          <div className="ctl__label">
-            <span>PIXEL SIZE</span>
-            <span className="val">{d.pixelSize}×</span>
-          </div>
-          <Segmented
-            value={String(d.pixelSize)}
-            options={PIXEL_SIZES}
-            onChange={(v) => setDither({ pixelSize: Number(v) })}
-          />
-        </div>
+        ) : (
+          <>
+            <div className="ctl">
+              <div className="ctl__label">
+                <span>DITHER</span>
+              </div>
+              <Segmented value={d.type} options={DITHERS} onChange={(t) => setDither({ type: t })} />
+            </div>
+            <div className="ctl">
+              <div className="ctl__label">
+                <span>PIXEL SIZE</span>
+                <span className="val">{d.pixelSize}×</span>
+              </div>
+              <Segmented
+                value={String(d.pixelSize)}
+                options={PIXEL_SIZES}
+                onChange={(v) => setDither({ pixelSize: Number(v) })}
+              />
+            </div>
+          </>
+        )}
         <Slider
           label="BLACK PT"
           value={d.blackPoint}
@@ -122,14 +208,16 @@ export function Panel({
           fmt={(v) => v.toFixed(2)}
           onChange={(v) => setDither({ gamma: v })}
         />
-        <Slider
-          label="THRESHOLD"
-          value={d.threshold}
-          min={0}
-          max={255}
-          disabled={!bwMode}
-          onChange={(v) => setDither({ threshold: v })}
-        />
+        {!d.pixelLock && (
+          <Slider
+            label="THRESHOLD"
+            value={d.threshold}
+            min={0}
+            max={255}
+            disabled={!bwMode}
+            onChange={(v) => setDither({ threshold: v })}
+          />
+        )}
       </Section>
 
       {/* 2 — COLOR ----------------------------------------------------------- */}

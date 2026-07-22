@@ -31,7 +31,21 @@ export interface DitherState {
   whitePoint: number; // 0..255
   gamma: number; // 0.1..3.0
   threshold: number; // 0..255  (B&W 1-bit cutoff)
+  /** Pixel-Lock: snap already-pixel-art input to its native grid (one solid
+   *  colour per cell) INSTEAD of dithering. Supersedes pixelSize + dither. */
+  pixelLock: boolean;
+  /** native cell size in source px — seeded by auto-detect, user-adjustable */
+  pixelLockSize: number;
+  /** last auto-detected cell size (for the AUTO readout / re-detect) */
+  pixelLockAuto: number;
+  /** target max colours after collapse (2..PIXEL_LOCK_COLORS_MAX); near-dupes
+   *  are always merged, then the palette is reduced to this many */
+  pixelLockColors: number;
 }
+
+/** Colour-count slider bounds for Pixel-Lock. */
+export const PIXEL_LOCK_COLORS_MIN = 2;
+export const PIXEL_LOCK_COLORS_MAX = 20;
 
 export interface GradientStop {
   pos: number; // 0..1

@@ -54,6 +54,10 @@ export function makeDefaultState(): AppState {
       whitePoint: 255,
       gamma: 1,
       threshold: 128,
+      pixelLock: false,
+      pixelLockSize: 8,
+      pixelLockAuto: 8,
+      pixelLockColors: 20,
     },
     color: {
       originalColors: true,

@@ -472,6 +472,49 @@ button {
   box-shadow: inset 0 1px 0 var(--line);
 }
 
+/* Nested collapsible sub-dropdown (e.g. Pixel-Lock's AI-art settings). */
+.subsec {
+  border: var(--hairline) solid var(--line);
+  border-left: 2px solid var(--accent-2);
+  border-radius: 3px;
+  background: rgba(239, 74, 32, 0.03);
+}
+.subsec__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  text-align: left;
+  color: var(--text-dim);
+  letter-spacing: var(--letter-wide);
+  font-size: var(--fs-small);
+  user-select: none;
+  cursor: pointer;
+}
+.subsec.open .subsec__head,
+.subsec__head:hover {
+  color: var(--text);
+}
+.subsec__head .chev {
+  color: var(--accent-2);
+  width: 10px;
+  display: inline-block;
+}
+.subsec__head .spacer {
+  flex: 1;
+}
+.subsec__head .val {
+  color: var(--text-mute);
+  font-size: var(--fs-small);
+}
+.subsec__body {
+  padding: 4px 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
 /* ============================================================================
    CONTROLS
    ============================================================================ */

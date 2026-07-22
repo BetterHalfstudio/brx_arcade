@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { Panel } from "../panel/Panel";
 import { CanvasStage } from "../canvas/CanvasStage";
 import type { Engine } from "../canvas/Engine";
 import { downloadBlob, stampName } from "../export/download";
+import { detectPixelGrid } from "../pipeline/pixelLock";
 
 // The original dither/CRT tool, now mounted at the "/" route.
 
@@ -16,6 +17,27 @@ export function DitherTool() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<Pending>(null);
   const hasImage = !!store.state.layer.image;
+
+  // --- Pixel-Lock auto grid detection ----------------------------------------
+  // Detect the native cell size once per image (the first time Pixel-Lock is
+  // active for it); after that the slider is the user's to adjust. RE-DETECT
+  // re-runs it on demand.
+  const { setDither } = store;
+  const image = store.state.layer.image;
+  const pixelLock = store.state.dither.pixelLock;
+  const detectedFor = useRef<HTMLImageElement | null>(null);
+
+  const runDetect = useCallback(() => {
+    if (!image) return;
+    detectedFor.current = image;
+    const cell = detectPixelGrid(image);
+    setDither({ pixelLockSize: cell, pixelLockAuto: cell });
+  }, [image, setDither]);
+
+  useEffect(() => {
+    if (!image || !pixelLock || detectedFor.current === image) return;
+    runDetect();
+  }, [image, pixelLock, runDetect]);
 
   // Delete / Backspace removes the placed image (ignored while typing).
   useEffect(() => {
@@ -74,7 +96,7 @@ export function DitherTool() {
 
   return (
     <div className="app">
-      <Panel store={store} onExport={onExport} onAddImage={handleAddImage} />
+      <Panel store={store} onExport={onExport} onAddImage={handleAddImage} onRedetect={runDetect} />
       <CanvasStage store={store} engineRef={engineRef} onDropFile={handleDropFile} />
 
       <input

@@ -1,6 +1,7 @@
-import { rasterize } from "./rasterize";
+import { rasterize, spriteRect } from "./rasterize";
 import { buildLevelsLut, applyLevels } from "./levels";
 import { dither, ditherGradient, toGrayscale, type DitherMode } from "./dither";
+import { collapseToGrid, recolorSolid } from "./pixelLock";
 import { hexToRgb } from "../util/color";
 import { CANVAS_W, CANVAS_H } from "../state/types";
 import type { AppState } from "../state/types";
@@ -31,6 +32,13 @@ export class Pipeline {
   private readonly comp: HTMLCanvasElement;
   private readonly compCtx: CanvasRenderingContext2D;
 
+  /** Pixel-Lock collapse cache — recomputed only when the image, cell size, or
+   *  colour count changes, not on every position/scale/colour tweak. */
+  private plImage: HTMLImageElement | null = null;
+  private plCell = 0;
+  private plColors = 0;
+  private plCanvas: HTMLCanvasElement | null = null;
+
   constructor() {
     const [, srcCtx] = makeCanvas();
     this.srcCtx = srcCtx;
@@ -42,6 +50,29 @@ export class Pipeline {
   /** Stages 1..4 → resultCanvas. Pure function of state + the original image. */
   run(state: AppState): void {
     const { dither: d, color } = state;
+
+    // PIXEL-LOCK — an alternative to the dither path. Collapse the source to its
+    // native grid (one solid colour per cell), place it, apply levels + a
+    // non-dithered recolour. Supersedes pixelSize and the dither entirely.
+    if (d.pixelLock && state.layer.image) {
+      const cell = Math.max(1, Math.round(d.pixelLockSize));
+      const colors = Math.max(1, Math.round(d.pixelLockColors));
+      if (this.plImage !== state.layer.image || this.plCell !== cell || this.plColors !== colors) {
+        this.plCanvas = collapseToGrid(state.layer.image, cell, colors);
+        this.plImage = state.layer.image;
+        this.plCell = cell;
+        this.plColors = colors;
+      }
+      const r = spriteRect(state.layer);
+      this.srcCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      this.srcCtx.imageSmoothingEnabled = false; // keep the grid crisp
+      this.srcCtx.drawImage(this.plCanvas!, r.x, r.y, r.w, r.h);
+      const img = this.srcCtx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+      applyLevels(img.data, buildLevelsLut(d));
+      recolorSolid(img.data, color);
+      this.resultCtx.putImageData(img, 0, 0);
+      return;
+    }
 
     // 1 — rasterize the placed sprite (source of truth)
     rasterize(this.srcCtx, state.layer);
