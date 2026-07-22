@@ -41,8 +41,6 @@ export function Panel({
     crt: false,
     roadmap: false,
   });
-  // nested Pixel-Lock settings dropdown (open by default when the mode is on)
-  const [plOpen, setPlOpen] = useState(true);
   const toggle = (k: keyof typeof open) =>
     setOpen((o) => ({ ...o, [k]: !o[k] }));
 
@@ -53,11 +51,8 @@ export function Panel({
   // pure black & white only when no recolor is active
   const bwMode = !c.originalColors && !c.gradientMapOn;
 
-  // ---- pixel-lock derived readout (native grid the current cell resolves to) --
+  // ---- pixel-lock: current cell size (native px per art-pixel) ----
   const plCell = Math.max(1, Math.round(d.pixelLockSize));
-  const plGridW = state.layer.naturalW ? Math.max(1, Math.round(state.layer.naturalW / plCell)) : 0;
-  const plGridH = state.layer.naturalH ? Math.max(1, Math.round(state.layer.naturalH / plCell)) : 0;
-  const plIsAuto = plCell === Math.round(d.pixelLockAuto);
 
   const setOriginal = (v: boolean) => setColor({ originalColors: v });
   const setGradientOn = (v: boolean) => setColor({ gradientMapOn: v });
@@ -102,67 +97,40 @@ export function Panel({
         />
 
         {d.pixelLock ? (
-          /* Snap AI pixel-art to its native grid instead of dithering. The
-             AI-pixel-art controls live in their own dropdown to stay tidy. */
-          <div className={"subsec" + (plOpen ? " open" : "")}>
-            <div
-              className="subsec__head"
-              role="button"
-              tabIndex={0}
-              onClick={() => setPlOpen((o) => !o)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setPlOpen((o) => !o);
-                }
-              }}
-            >
-              <span className="chev">{plOpen ? "▾" : "▸"}</span>
-              <span>PIXEL-LOCK · AI ART</span>
-              <span className="spacer" />
-              <span className="val">{plGridW ? `${plGridW}×${plGridH}` : "—"}</span>
-            </div>
-            {plOpen && (
-              <div className="subsec__body">
-                <div className="ctl">
-                  <div className="ctl__label">
-                    <span>PIXEL SIZE</span>
-                    <span className="val">{plCell}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    className="hot"
-                    min={1}
-                    max={64}
-                    step={1}
-                    value={plCell}
-                    onChange={(e) => setDither({ pixelLockSize: Number(e.target.value) })}
-                  />
+          /* Snap AI pixel-art to its native grid instead of dithering. */
+          <div className="subsec">
+            <div className="subsec__body">
+              <div className="ctl">
+                <div className="ctl__label">
+                  <span>PIXEL SIZE</span>
+                  <span className="val">{plCell}px</span>
                 </div>
-                <Slider
-                  label="COLORS"
-                  value={d.pixelLockColors}
-                  min={PIXEL_LOCK_COLORS_MIN}
-                  max={PIXEL_LOCK_COLORS_MAX}
-                  hot
-                  onChange={(v) => setDither({ pixelLockColors: v })}
+                <input
+                  type="range"
+                  className="hot"
+                  min={1}
+                  max={64}
+                  step={1}
+                  value={plCell}
+                  onChange={(e) => setDither({ pixelLockSize: Number(e.target.value) })}
                 />
-                <div className="row">
-                  <button className="key sm ghost" onClick={onRedetect} disabled={!state.layer.image}>
-                    ◎ RE-DETECT
-                  </button>
-                  <div className="note" style={{ margin: 0, flex: 1, textAlign: "right" }}>
-                    {plGridW ? (
-                      <>
-                        GRID {plGridW}×{plGridH} · {plIsAuto ? "AUTO ✓" : "MANUAL"}
-                      </>
-                    ) : (
-                      "NO IMAGE"
-                    )}
-                  </div>
-                </div>
               </div>
-            )}
+              <Slider
+                label="COLORS"
+                value={d.pixelLockColors}
+                min={PIXEL_LOCK_COLORS_MIN}
+                max={PIXEL_LOCK_COLORS_MAX}
+                hot
+                onChange={(v) => setDither({ pixelLockColors: v })}
+              />
+              <button
+                className="key sm ghost block"
+                onClick={onRedetect}
+                disabled={!state.layer.image}
+              >
+                ◎ RE-DETECT
+              </button>
+            </div>
           </div>
         ) : (
           <>
