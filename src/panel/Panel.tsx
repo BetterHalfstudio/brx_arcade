@@ -8,7 +8,7 @@ import { isValidHex, hexToRgb } from "../util/color";
 import { Section, Slider, Toggle, Segmented } from "./controls";
 
 // Left panel. Title → Add Image → three collapsible dropdowns (all collapsed
-// on load) → muted roadmap → export pinned at the bottom.
+// on load) → export pinned at the bottom.
 
 const DITHERS: { value: DitherType; label: string }[] = [
   { value: "fs", label: "FS" },
@@ -39,7 +39,6 @@ export function Panel({
     dither: false,
     color: false,
     crt: false,
-    roadmap: false,
   });
   const toggle = (k: keyof typeof open) =>
     setOpen((o) => ({ ...o, [k]: !o[k] }));
@@ -316,16 +315,6 @@ export function Panel({
         <Slider label="FLICKER" value={crt.flicker} min={0} max={1} step={0.01} hot disabled={!crt.on} fmt={pct} onChange={(v) => setCRT({ flicker: v })} />
         <Slider label="MASK" value={crt.mask} min={0} max={1} step={0.01} hot disabled={!crt.on} fmt={pct} onChange={(v) => setCRT({ mask: v })} />
       </Section>
-
-      {/* ROADMAP (muted) ----------------------------------------------------- */}
-      <div className="roadmap">
-        <Section title="ROADMAP" open={open.roadmap} onToggle={() => toggle("roadmap")}>
-          <ul>
-            <li>MULTI-SPRITE SUPPORT</li>
-            <li>COLOR THEMES</li>
-          </ul>
-        </Section>
-      </div>
 
       {/* EXPORT (pinned to the very bottom) ---------------------------------- */}
       <div className="export">

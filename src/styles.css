@@ -874,6 +874,7 @@ input[type="range"].hot::-moz-range-thumb {
    EXPORT BLOCK
    ============================================================================ */
 .export {
+  margin-top: auto; /* pin to the bottom of the panel column */
   padding: 12px var(--pad) 14px;
   display: flex;
   flex-direction: column;
@@ -892,40 +893,6 @@ input[type="range"].hot::-moz-range-thumb {
   letter-spacing: var(--letter);
   text-transform: none;
   line-height: 1.4;
-}
-
-/* ============================================================================
-   ROADMAP (muted, separated)
-   ============================================================================ */
-.roadmap {
-  margin-top: auto;
-  border-top: var(--hairline) solid var(--line);
-  opacity: 0.62;
-}
-.roadmap .section__head {
-  color: var(--text-mute);
-  font-size: var(--fs-small);
-}
-.roadmap .section__head .chev {
-  color: var(--text-mute);
-}
-.roadmap ul {
-  list-style: none;
-  padding: 2px var(--pad) 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.roadmap li {
-  font-size: var(--fs-micro);
-  color: var(--text-mute);
-  letter-spacing: var(--letter);
-  display: flex;
-  gap: 7px;
-}
-.roadmap li::before {
-  content: "▸";
-  color: var(--col-grey);
 }
 
 /* ============================================================================
