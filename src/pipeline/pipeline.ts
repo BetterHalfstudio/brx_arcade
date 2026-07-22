@@ -1,11 +1,9 @@
 import { rasterize } from "./rasterize";
 import { buildLevelsLut, applyLevels } from "./levels";
-import { dither, toGrayscale, type DitherMode } from "./dither";
-import { buildGradientLut, applyGradientMap } from "./gradientMap";
-import { paletteToBytes } from "../util/color";
+import { dither, ditherGradient, toGrayscale, type DitherMode } from "./dither";
+import { hexToRgb } from "../util/color";
 import { CANVAS_W, CANVAS_H } from "../state/types";
 import type { AppState } from "../state/types";
-import { activePalette } from "../state/defaults";
 
 // PIPELINE ORCHESTRATOR.
 // Recomputes stages 1..4 from the ORIGINAL source on every run() — never from
@@ -67,27 +65,29 @@ export class Pipeline {
     // 2 — levels (pre-dither)
     applyLevels(data, buildLevelsLut(d));
 
-    // black & white base when original colors are off
-    if (!color.originalColors) toGrayscale(data);
+    const dw = B > 1 ? wq : CANVAS_W;
+    const dh = B > 1 ? hq : CANVAS_H;
 
-    // 3 — dither. Mode: palette / original (image's own colors) / bw 1-bit.
-    const mode: DitherMode = color.paletteOn
-      ? "palette"
-      : color.originalColors
-        ? "original"
-        : "bw";
-    const pal = activePalette(color);
-    dither(data, B > 1 ? wq : CANVAS_W, B > 1 ? hq : CANVAS_H, {
-      type: d.type,
-      mode,
-      threshold: d.threshold,
-      palette: paletteToBytes(pal),
-      paletteCount: pal.length,
-    });
-
-    // 4 — gradient map (overrides palette/original colors entirely when ON)
+    // 3 — dither + recolour.
     if (color.gradientMapOn) {
-      applyGradientMap(data, buildGradientLut(color.gradientStops));
+      // Gradient map is the only recolour system: dither happens IN BRIGHTNESS
+      // SPACE against the positioned stops, so the stop sliders (and hard stops)
+      // shape the output instead of being flattened by an earlier quantisation.
+      const stops = color.gradientStops
+        .map((s) => ({ pos: s.pos, ...hexToRgb(s.color) }))
+        .sort((a, b) => a.pos - b.pos);
+      ditherGradient(data, dw, dh, d.type, stops, color.hardStops);
+    } else {
+      // black & white base when original colors are off
+      if (!color.originalColors) toGrayscale(data);
+      const mode: DitherMode = color.originalColors ? "original" : "bw";
+      dither(data, dw, dh, {
+        type: d.type,
+        mode,
+        threshold: d.threshold,
+        palette: new Uint8Array(0),
+        paletteCount: 0,
+      });
     }
 
     // write back, upscaling the reduced buffer into NxN blocks if pixelated

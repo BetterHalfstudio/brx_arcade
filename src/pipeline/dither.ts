@@ -276,3 +276,120 @@ function ditherOrdered(
     }
   }
 }
+
+// --- Gradient-map dither -----------------------------------------------------
+// Recolour by BRIGHTNESS against positioned stops, dithering in brightness space
+// so the stop sliders (and hard stops) actually shape the result while the
+// dither still produces its texture at the band edges.
+
+export interface GradientStopRGB {
+  pos: number; // 0..1, ascending
+  r: number;
+  g: number;
+  b: number;
+}
+
+/** Brightness levels used when stops blend (hard stops OFF) — enough to read as
+ *  a smooth ramp, coarse enough that the dither leaves visible texture. */
+const SMOOTH_LEVELS = 16;
+
+export function ditherGradient(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  type: DitherType,
+  stops: GradientStopRGB[],
+  hard: boolean
+): void {
+  const n = stops.length;
+  if (n === 0) return;
+  const out = { r: 0, g: 0, b: 0 };
+  const q = SMOOTH_LEVELS - 1;
+
+  /** Resolve a brightness t (0..1) to a colour; returns the quantisation level
+   *  it settled on so FS can diffuse the leftover error. */
+  function pick(t: number): number {
+    if (hard) {
+      // each stop's position is where its colour STARTS — output is nothing but
+      // the stop colours, so black + white gives black and white and no grey.
+      let i = 0;
+      for (let k = 0; k < n; k++) if (t >= stops[k].pos) i = k;
+      out.r = stops[i].r;
+      out.g = stops[i].g;
+      out.b = stops[i].b;
+      return stops[i].pos;
+    }
+    // Smooth: midtones are real interpolated colours. Brightness is still
+    // quantised (to a fine ramp) so the dither has something to work against —
+    // without that there is no texture, and this is a dither tool.
+    const tq = Math.min(1, Math.max(0, Math.round(t * q) / q));
+    if (tq <= stops[0].pos) {
+      out.r = stops[0].r; out.g = stops[0].g; out.b = stops[0].b;
+      return tq;
+    }
+    if (tq >= stops[n - 1].pos) {
+      out.r = stops[n - 1].r; out.g = stops[n - 1].g; out.b = stops[n - 1].b;
+      return tq;
+    }
+    let a = 0;
+    for (let k = 0; k < n - 1; k++) if (tq >= stops[k].pos) a = k;
+    const b = Math.min(n - 1, a + 1);
+    const span = stops[b].pos - stops[a].pos || 1;
+    const f = (tq - stops[a].pos) / span;
+    out.r = stops[a].r + (stops[b].r - stops[a].r) * f;
+    out.g = stops[a].g + (stops[b].g - stops[a].g) * f;
+    out.b = stops[a].b + (stops[b].b - stops[a].b) * f;
+    return tq;
+  }
+
+  if (type === "fs") {
+    const lum = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      lum[i] = luma(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]) / 255;
+    }
+    const push = (i: number, e: number, f: number) => {
+      if (data[i * 4 + 3] === 0) return;
+      lum[i] += e * f;
+    };
+    for (let y = 0; y < h; y++) {
+      const ltr = (y & 1) === 0; // serpentine
+      for (let k = 0; k < w; k++) {
+        const x = ltr ? k : w - 1 - k;
+        const i = y * w + x;
+        if (data[i * 4 + 3] === 0) continue;
+        const t = lum[i];
+        const target = pick(t);
+        data[i * 4] = out.r;
+        data[i * 4 + 1] = out.g;
+        data[i * 4 + 2] = out.b;
+        const e = t - target;
+        const rightEdge = ltr ? x < w - 1 : x > 0;
+        if (rightEdge) push(ltr ? i + 1 : i - 1, e, 7 / 16);
+        if (y < h - 1) {
+          const down = i + w;
+          const dlEdge = ltr ? x > 0 : x < w - 1;
+          const drEdge = ltr ? x < w - 1 : x > 0;
+          if (dlEdge) push(ltr ? down - 1 : down + 1, e, 3 / 16);
+          push(down, e, 5 / 16);
+          if (drEdge) push(ltr ? down + 1 : down - 1, e, 1 / 16);
+        }
+      }
+    }
+    return;
+  }
+
+  // ordered (Bayer): offset brightness by the matrix, ~one quantisation step wide
+  const { m, n: bn, max } = bayerFor(type);
+  const spread = hard ? 1 / Math.max(1, n - 1) : 1 / q;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (data[i * 4 + 3] === 0) continue;
+      const off = ((m[(y % bn) * bn + (x % bn)] + 0.5) / max - 0.5) * spread;
+      pick(luma(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]) / 255 + off);
+      data[i * 4] = out.r;
+      data[i * 4 + 1] = out.g;
+      data[i * 4 + 2] = out.b;
+    }
+  }
+}

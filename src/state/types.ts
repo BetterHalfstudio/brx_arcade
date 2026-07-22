@@ -39,24 +39,19 @@ export interface GradientStop {
 }
 
 export interface ColorState {
-  /** ON = keep the image's original colors; OFF = black & white base */
+  /** ON = keep the image's original colors; OFF = black & white base.
+   *  (No effect while the gradient map is on — that maps by brightness.) */
   originalColors: boolean;
-  /** recolor mode A: snap the dither to the active palette (excl. gradient) */
-  paletteOn: boolean;
-  /** recolor mode B: gradient map by luminance (exclusive with palette) */
+  /** recolor by brightness using positioned stops */
   gradientMapOn: boolean;
-  /** color-mode palette: a built-in default or the user's custom set */
-  paletteSource: "default" | "custom";
-  defaultIndex: number; // 0..4 selected built-in palette
-  customPalette: string[]; // user palette (color mode)
-  bwPalette: string[]; // 2-color duotone used when B&W (Original Colors off)
   gradientStops: GradientStop[];
+  /** no blending between stops — each stop's position is where its color starts */
+  hardStops: boolean;
   background: string; // hex
 }
 
-/** Max palette entries: a duotone pair in B&W, otherwise a fuller set. */
-export const PALETTE_MAX_BW = 2;
-export const PALETTE_MAX = 16;
+/** Max gradient stops. */
+export const STOPS_MAX = 12;
 
 export interface CRTState {
   on: boolean; // OFF by default

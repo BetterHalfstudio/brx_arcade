@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { StoreApi } from "../state/store";
-import type { DitherType } from "../state/types";
-import { PALETTE_MAX, PALETTE_MAX_BW } from "../state/types";
-import { DEFAULT_PALETTES } from "../state/defaults";
-import { isValidHex } from "../util/color";
+import type { DitherType, GradientStop } from "../state/types";
+import { STOPS_MAX } from "../state/types";
+import { DEFAULT_PALETTES, paletteToStops } from "../state/defaults";
+import { ditherGradient } from "../pipeline/dither";
+import { isValidHex, hexToRgb } from "../util/color";
 import { Section, Slider, Toggle, Segmented } from "./controls";
 
 // Left panel. Title → Add Image → three collapsible dropdowns (all collapsed
@@ -45,45 +46,26 @@ export function Panel({
   const crt = state.crt;
 
   // pure black & white only when no recolor is active
-  const bwMode = !c.originalColors && !c.paletteOn && !c.gradientMapOn;
+  const bwMode = !c.originalColors && !c.gradientMapOn;
 
-  // ---- custom (color-mode) palette helpers — editing switches to custom ----
-  const setCustomAt = (i: number, hex: string) =>
-    setColor({ paletteSource: "custom", customPalette: c.customPalette.map((p, j) => (j === i ? hex : p)) });
-  const removeCustom = (i: number) =>
-    setColor({ paletteSource: "custom", customPalette: c.customPalette.filter((_, j) => j !== i) });
-  const addCustom = () =>
-    c.customPalette.length < PALETTE_MAX &&
-    setColor({ paletteSource: "custom", customPalette: [...c.customPalette, c.customPalette[c.customPalette.length - 1] ?? "#ffffff"] });
-  const selectDefault = (i: number) => setColor({ paletteSource: "default", defaultIndex: i });
-
-  // ---- B&W duotone helpers (max 2) ----
-  const setBwAt = (i: number, hex: string) =>
-    setColor({ bwPalette: c.bwPalette.map((p, j) => (j === i ? hex : p)) });
-  const addBw = () =>
-    c.bwPalette.length < PALETTE_MAX_BW && setColor({ bwPalette: [...c.bwPalette, "#ffffff"] });
-  const removeBw = (i: number) =>
-    c.bwPalette.length > 1 && setColor({ bwPalette: c.bwPalette.filter((_, j) => j !== i) });
-
-  // ---- recolor toggles — both palettes are preserved across the switch ----
   const setOriginal = (v: boolean) => setColor({ originalColors: v });
-  const setPaletteOn = (v: boolean) =>
-    setColor({ paletteOn: v, gradientMapOn: v ? false : c.gradientMapOn });
-  const setGradientOn = (v: boolean) =>
-    setColor({ gradientMapOn: v, paletteOn: v ? false : c.paletteOn });
+  const setGradientOn = (v: boolean) => setColor({ gradientMapOn: v });
 
-  // ---- gradient stop helpers ----
+  // ---- gradient map: the single recolor system ----------------------------
+  // Presets are just loaders — they drop a palette in as evenly spaced stops
+  // and everything stays editable from there (no default/custom modes).
   const stops = c.gradientStops;
-  const setStop = (i: number, p: Partial<{ pos: number; color: string }>) =>
+  const sorted = [...stops].sort((a, b) => a.pos - b.pos);
+  const setStop = (i: number, p: Partial<GradientStop>) =>
     setColor({ gradientStops: stops.map((st, j) => (j === i ? { ...st, ...p } : st)) });
   const addStop = () =>
+    stops.length < STOPS_MAX &&
     setColor({ gradientStops: [...stops, { pos: 1, color: "#ffffff" }] });
   const removeStop = (i: number) =>
     stops.length > 2 && setColor({ gradientStops: stops.filter((_, j) => j !== i) });
-  const gradientCss =
-    "linear-gradient(90deg," +
-    [...stops].sort((a, b) => a.pos - b.pos).map((s) => `${s.color} ${Math.round(s.pos * 100)}%`).join(",") +
-    ")";
+  const loadPreset = (i: number) =>
+    setColor({ gradientMapOn: true, gradientStops: paletteToStops(DEFAULT_PALETTES[i]) });
+
 
   return (
     <aside className="panel">
@@ -156,93 +138,53 @@ export function Panel({
         title="COLOR"
         open={open.color}
         onToggle={() => toggle("color")}
-        pip={c.gradientMapOn ? "hot" : c.paletteOn ? "on" : "off"}
+        pip={c.gradientMapOn ? "hot" : "off"}
       >
-        <Toggle label="ORIGINAL COLORS" on={c.originalColors} onChange={setOriginal} />
-
-        <Toggle label="PALETTE" on={c.paletteOn} onChange={setPaletteOn} />
-
-        {/* color mode: 5 default palettes + custom (mutually greyed) */}
-        {c.paletteOn && c.originalColors && (
-          <>
-            <div className="ctl">
-              <div className="ctl__label"><span>DEFAULT</span></div>
-              <div className={"palrow" + (c.paletteSource === "custom" ? " inactive" : "")}>
-                {DEFAULT_PALETTES.map((p, i) => (
-                  <button
-                    key={i}
-                    className={"palbtn" + (c.paletteSource === "default" && c.defaultIndex === i ? " active" : "")}
-                    onClick={() => selectDefault(i)}
-                    title={`palette 0${i + 1}`}
-                  >
-                    <span className="sw">
-                      {p.slice(0, 4).map((col, j) => (
-                        <i key={j} style={{ background: col }} />
-                      ))}
-                    </span>
-                    <span className="lbl">0{i + 1}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className={"ctl" + (c.paletteSource === "default" ? " dim" : "")}>
-              <div className="ctl__label">
-                <span>CUSTOM</span>
-                <span className="val">{c.customPalette.length}/{PALETTE_MAX}</span>
-              </div>
-              <div className="palette">
-                {c.customPalette.map((hex, i) => (
-                  <label className="chip" key={i} style={{ background: hex }}>
-                    <input
-                      type="color"
-                      value={hex}
-                      onChange={(e) => setCustomAt(i, e.target.value)}
-                      style={{ opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
-                    />
-                    <span className="x" onClick={(e) => { e.preventDefault(); removeCustom(i); }}>×</span>
-                  </label>
-                ))}
-                {c.customPalette.length < PALETTE_MAX && (
-                  <button className="add" onClick={addCustom} title="add color">+</button>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* B&W mode: 2-slot duotone (defaults to black + FF3D00) */}
-        {c.paletteOn && !c.originalColors && (
-          <div className="ctl">
-            <div className="ctl__label">
-              <span>DUOTONE</span>
-              <span className="val">{c.bwPalette.length}/{PALETTE_MAX_BW}</span>
-            </div>
-            <div className="palette">
-              {c.bwPalette.map((hex, i) => (
-                <label className="chip" key={i} style={{ background: hex }}>
-                  <input
-                    type="color"
-                    value={hex}
-                    onChange={(e) => setBwAt(i, e.target.value)}
-                    style={{ opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
-                  />
-                  {c.bwPalette.length > 1 && (
-                    <span className="x" onClick={(e) => { e.preventDefault(); removeBw(i); }}>×</span>
-                  )}
-                </label>
-              ))}
-              {c.bwPalette.length < PALETTE_MAX_BW && (
-                <button className="add" onClick={addBw} title="add color">+</button>
-              )}
-            </div>
-          </div>
-        )}
+        <Toggle
+          label="ORIGINAL COLORS"
+          on={c.originalColors}
+          onChange={setOriginal}
+          disabled={c.gradientMapOn}
+        />
 
         <Toggle label="GRADIENT MAP" on={c.gradientMapOn} hot onChange={setGradientOn} />
+
+        {/* Presets load straight into the stops below — pick one, then edit. */}
+        <div className="ctl">
+          <div className="ctl__label"><span>PRESETS</span></div>
+          <div className="palrow">
+            {DEFAULT_PALETTES.map((p, i) => (
+              <button
+                key={i}
+                className="palbtn"
+                onClick={() => loadPreset(i)}
+                title={`load palette 0${i + 1} into the gradient`}
+              >
+                <span className="sw">
+                  {p.slice(0, 4).map((col, j) => (
+                    <i key={j} style={{ background: col }} />
+                  ))}
+                </span>
+                <span className="lbl">0{i + 1}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {c.gradientMapOn && (
           <div className="gstops">
-            <div className="gradbar" style={{ background: gradientCss }} />
+            <GradientPreview stops={sorted} hard={c.hardStops} type={d.type} />
+
+            <Toggle
+              label="HARD STOPS"
+              on={c.hardStops}
+              onChange={(v) => setColor({ hardStops: v })}
+            />
+
+            <div className="ctl__label">
+              <span>STOPS</span>
+              <span className="val">{stops.length}/{STOPS_MAX}</span>
+            </div>
             {stops.map((s, i) => (
               <div className="gstop" key={i}>
                 <label className="swatch" style={{ background: s.color }}>
@@ -262,9 +204,11 @@ export function Panel({
                 </button>
               </div>
             ))}
-            <button className="key sm ghost" onClick={addStop}>
-              + STOP
-            </button>
+            {stops.length < STOPS_MAX && (
+              <button className="key sm ghost" onClick={addStop}>
+                + STOP
+              </button>
+            )}
           </div>
         )}
 
@@ -376,3 +320,48 @@ export function Panel({
 }
 
 const pct = (v: number) => Math.round(v * 100) + "%";
+
+// Gradient preview. Runs the REAL dither over a 0→1 brightness ramp rather than
+// drawing a CSS gradient, so what you see is what the canvas does — including
+// the dither texture, which is the only thing that makes hard stops read as
+// tones rather than flat bands.
+function GradientPreview({
+  stops,
+  hard,
+  type,
+}: {
+  stops: GradientStop[];
+  hard: boolean;
+  type: DitherType;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const w = Math.max(32, Math.round(cv.clientWidth));
+    const h = 14;
+    cv.width = w;
+    cv.height = h;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    const img = ctx.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const v = Math.round((x / (w - 1)) * 255);
+        const i = (y * w + x) * 4;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+        img.data[i + 3] = 255;
+      }
+    }
+    ditherGradient(
+      img.data,
+      w,
+      h,
+      type,
+      stops.map((s) => ({ pos: s.pos, ...hexToRgb(s.color) })),
+      hard
+    );
+    ctx.putImageData(img, 0, 0);
+  }, [stops, hard, type]);
+  return <canvas ref={ref} className="gradbar" />;
+}
