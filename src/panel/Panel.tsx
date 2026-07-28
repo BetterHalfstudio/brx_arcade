@@ -24,13 +24,22 @@ const PIXEL_SIZES: { value: string; label: string }[] = [
 
 export function Panel({
   store,
-  onExport,
+  onExportImage,
+  onExportFrame,
   onAddImage,
+  onRemoveBg,
+  removingBg,
   onRedetect,
 }: {
   store: StoreApi;
-  onExport: () => void;
+  /** export just the processed image, cropped to its visible pixels */
+  onExportImage: () => void;
+  /** export the full 600x450 frame (CRT baked when on) */
+  onExportFrame: () => void;
   onAddImage: () => void;
+  /** auto-remove a (near-)solid background from the placed image */
+  onRemoveBg: () => void;
+  removingBg: boolean;
   /** re-run pixel-grid auto-detection on the current image */
   onRedetect: () => void;
 }) {
@@ -77,6 +86,15 @@ export function Panel({
       <div className="toolbar">
         <button className="key cream block" onClick={onAddImage}>
           ＋ ADD IMAGE
+        </button>
+        <button
+          className="key sm ghost block"
+          onClick={onRemoveBg}
+          disabled={!state.layer.image || removingBg}
+          style={{ opacity: state.layer.image ? 1 : 0.4 }}
+          title="auto-remove a solid background"
+        >
+          {removingBg ? "◴ REMOVING…" : "◌ REMOVE BG"}
         </button>
       </div>
 
@@ -318,7 +336,6 @@ export function Panel({
 
       {/* EXPORT (pinned to the very bottom) ---------------------------------- */}
       <div className="export">
-        <div className="ttl">EXPORT · PNG · 4:3</div>
         {crt.on ? (
           <>
             <div className="ctl">
@@ -340,24 +357,27 @@ export function Panel({
             <div className="note">CRT BAKED · BG OPAQUE · {600 * state.exportScale}×{450 * state.exportScale}</div>
           </>
         ) : (
-          <>
-            <Toggle
-              label="TRANSPARENT BG"
-              on={state.exportTransparent}
-              onChange={(v) => patch({ exportTransparent: v })}
-            />
-            <div className="note">
-              FLAT 600×450 · {state.exportTransparent ? "ALPHA PRESERVED" : "BACKGROUND FILLED"}
-            </div>
-          </>
+          <Toggle
+            label="TRANSPARENT BG"
+            on={state.exportTransparent}
+            onChange={(v) => patch({ exportTransparent: v })}
+          />
         )}
         <button
           className="key cream block"
-          onClick={onExport}
+          onClick={onExportImage}
           disabled={!state.layer.image}
           style={{ opacity: state.layer.image ? 1 : 0.4 }}
         >
           ▼ EXPORT PNG
+        </button>
+        <button
+          className="key block"
+          onClick={onExportFrame}
+          disabled={!state.layer.image}
+          style={{ opacity: state.layer.image ? 1 : 0.4 }}
+        >
+          ▼ EXPORT PNG · FULL FRAME
         </button>
       </div>
     </aside>

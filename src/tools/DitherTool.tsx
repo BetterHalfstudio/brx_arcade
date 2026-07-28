@@ -5,6 +5,7 @@ import { CanvasStage } from "../canvas/CanvasStage";
 import type { Engine } from "../canvas/Engine";
 import { downloadBlob, stampName } from "../export/download";
 import { detectPixelGrid } from "../pipeline/pixelLock";
+import { removeSolidBackground } from "../util/removeBg";
 
 // The original dither/CRT tool, now mounted at the "/" route.
 
@@ -40,10 +41,24 @@ export function DitherTool() {
   }, [image, pixelLock, runDetect]);
 
   // Delete / Backspace removes the placed image (ignored while typing).
+  // Ctrl/Cmd+Z undoes the last change (sliders, colors, bg removal, …).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
       const t = e.target as HTMLElement | null;
+      const typing =
+        !!t &&
+        (t.tagName === "TEXTAREA" ||
+          t.isContentEditable ||
+          (t.tagName === "INPUT" && (t as HTMLInputElement).type !== "range"));
+
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        if (typing) return; // text fields keep the browser's native undo
+        e.preventDefault();
+        store.undo();
+        return;
+      }
+
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))
         return;
       e.preventDefault();
@@ -51,7 +66,7 @@ export function DitherTool() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store.clearImage]);
+  }, [store.clearImage, store.undo]);
 
   function decodeAndLoad(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -83,7 +98,39 @@ export function DitherTool() {
     setPending(null);
   }
 
-  async function onExport() {
+  // Auto background removal (border flood-fill — solid backgrounds).
+  const [removingBg, setRemovingBg] = useState(false);
+  async function onRemoveBg() {
+    const img = store.state.layer.image;
+    if (!img || removingBg) return;
+    setRemovingBg(true);
+    try {
+      const cleaned = await removeSolidBackground(img);
+      if (cleaned !== img) {
+        detectedFor.current = cleaned; // same art → keep the user's pixel size
+        store.setLayer({ image: cleaned });
+      }
+    } catch (err) {
+      console.error("bg removal failed", err);
+    } finally {
+      setRemovingBg(false);
+    }
+  }
+
+  /** image-only (cropped to visible pixels) */
+  async function onExportImage() {
+    const eng = engineRef.current;
+    if (!eng || !store.state.layer.image) return;
+    try {
+      const blob = await eng.exportImagePNG(store.state);
+      downloadBlob(blob, stampName());
+    } catch (err) {
+      console.error("export failed", err);
+    }
+  }
+
+  /** full 600x450 frame (CRT baked when on) */
+  async function onExportFrame() {
     const eng = engineRef.current;
     if (!eng || !store.state.layer.image) return;
     try {
@@ -96,7 +143,15 @@ export function DitherTool() {
 
   return (
     <div className="app">
-      <Panel store={store} onExport={onExport} onAddImage={handleAddImage} onRedetect={runDetect} />
+      <Panel
+        store={store}
+        onExportImage={onExportImage}
+        onExportFrame={onExportFrame}
+        onAddImage={handleAddImage}
+        onRemoveBg={onRemoveBg}
+        removingBg={removingBg}
+        onRedetect={runDetect}
+      />
       <CanvasStage store={store} engineRef={engineRef} onDropFile={handleDropFile} />
 
       <input

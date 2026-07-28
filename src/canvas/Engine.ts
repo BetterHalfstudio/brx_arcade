@@ -72,15 +72,32 @@ export class Engine {
     this.recompute(this.state);
   }
 
+  /** Dark checkerboard (standard transparency checker under a 60% black
+   *  overlay) — display-only, never baked into an export. */
+  private drawChecker(ctx: CanvasRenderingContext2D) {
+    const SQ = 12;
+    ctx.fillStyle = "#666666"; // white @ 40%
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = "#525252"; // #ccc @ 40%
+    for (let y = 0; y * SQ < CANVAS_H; y++) {
+      for (let x = (y & 1); x * SQ < CANVAS_W; x += 2) {
+        ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
+      }
+    }
+  }
+
   private recompute(s: AppState) {
     // Stages 1..4 from the original source.
     this.pipeline.run(s);
-    // Stage 5 — display always composites over the background fill.
-    const composited = this.pipeline.composite(s.color.background);
+    // Stage 5 — display composites over the background fill, or over a dark
+    // transparency checker when exporting transparent (flat mode only).
+    const transparent = s.exportTransparent && !s.crt.on;
+    const composited = this.pipeline.composite(transparent ? null : s.color.background);
 
     // Always paint the flat 800x600 canvas: it backs the non-CRT view AND is
     // the buffer the in-canvas eyedropper reads (even while hidden under CRT).
     this.flatCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    if (transparent) this.drawChecker(this.flatCtx);
     this.flatCtx.drawImage(composited, 0, 0);
 
     if (s.crt.on) {
@@ -145,6 +162,45 @@ export class Engine {
     const sx = this.cssW / CANVAS_W;
     const r = spriteRect(s.layer);
     return { x: r.x * sx, y: r.y * sx, w: r.w * sx, h: r.h * sx, scale: sx };
+  }
+
+  /**
+   * Export JUST THE IMAGE: the processed sprite cropped to its visible pixels,
+   * not the full 600x450 frame. Always the flat result (CRT is a full-frame
+   * effect, so it only applies to the full-frame export). TRANSPARENT BG still
+   * decides alpha vs background fill — the display checker is never baked.
+   */
+  async exportImagePNG(s: AppState): Promise<Blob> {
+    this.pipeline.run(s); // ensure fresh
+    const src = this.pipeline.composite(null); // flat result, alpha preserved
+    const data = src.getContext("2d")!.getImageData(0, 0, CANVAS_W, CANVAS_H).data;
+
+    // bounding box of non-transparent pixels
+    let x0 = CANVAS_W;
+    let y0 = CANVAS_H;
+    let x1 = -1;
+    let y1 = -1;
+    for (let y = 0; y < CANVAS_H; y++) {
+      for (let x = 0; x < CANVAS_W; x++) {
+        if (data[(y * CANVAS_W + x) * 4 + 3] === 0) continue;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+    if (x1 < 0) throw new Error("nothing to export");
+
+    const out = document.createElement("canvas");
+    out.width = x1 - x0 + 1;
+    out.height = y1 - y0 + 1;
+    const ctx = out.getContext("2d")!;
+    if (!s.exportTransparent) {
+      ctx.fillStyle = s.color.background;
+      ctx.fillRect(0, 0, out.width, out.height);
+    }
+    ctx.drawImage(src, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+    return canvasToBlob(out);
   }
 
   async exportPNG(s: AppState): Promise<Blob> {

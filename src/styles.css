@@ -1034,6 +1034,9 @@ input[type="range"].hot::-moz-range-thumb {
   padding: 10px var(--pad);
   border-bottom: var(--hairline) solid var(--line);
   background: var(--panel-bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
 }
 
 /* ============================================================================
