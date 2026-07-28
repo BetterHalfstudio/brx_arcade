@@ -1,7 +1,68 @@
+import { useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { isValidHex } from "../util/color";
 
 // Small reusable, theme-driven panel controls. No UI kit — plain elements
 // styled by styles.css. Everything is compact to match the hero references.
+
+/**
+ * Color swatch that opens a HEX-ONLY entry popover (no native RGB/HSL picker).
+ * Type the code with or without "#"; Enter, Esc, or clicking away locks it in.
+ */
+export function HexSwatch(props: {
+  color: string;
+  onChange: (hex: string) => void;
+  title?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const openPop = () => {
+    setText(props.color.replace(/^#/, "").toUpperCase());
+    setOpen(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+  const commit = () => {
+    const v = text.trim().replace(/^#/, "");
+    if (isValidHex(v)) props.onChange("#" + v.toLowerCase());
+    setOpen(false);
+  };
+
+  return (
+    <span className="swatchwrap">
+      <button
+        type="button"
+        className="swatch"
+        style={{ background: props.color }}
+        title={props.title ?? props.color}
+        onClick={() => (open ? commit() : openPop())}
+      />
+      {open && (
+        <span className="hexpop">
+          <span className="hash">#</span>
+          <input
+            ref={inputRef}
+            value={text}
+            maxLength={6}
+            spellCheck={false}
+            onChange={(e) =>
+              setText(e.target.value.replace(/[^0-9a-fA-F]/g, "").toUpperCase())
+            }
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                commit();
+              }
+            }}
+          />
+        </span>
+      )}
+    </span>
+  );
+}
 
 export function Section(props: {
   index?: string;

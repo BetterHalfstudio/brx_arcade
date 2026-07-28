@@ -701,6 +701,7 @@ input[type="range"].hot::-moz-range-thumb {
 .swatch {
   width: 18px;
   height: 18px;
+  padding: 0;
   border-radius: 2px;
   border: var(--hairline) solid var(--line);
   flex: none;
@@ -716,15 +717,50 @@ input[type="range"].hot::-moz-range-thumb {
   background-size: 8px 8px;
   background-position: 0 0, 0 4px, 4px -4px, -4px 0;
 }
-.swatch input[type="color"] {
+/* swatch + hex-only entry popover (no native RGB/HSL picker) */
+.swatchwrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.hexpop {
   position: absolute;
-  inset: -4px;
-  width: 130%;
-  height: 130%;
-  border: none;
-  padding: 0;
-  background: none;
-  cursor: pointer;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--panel-raised);
+  border: var(--hairline) solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+}
+.hexpop .hash {
+  color: var(--text-mute);
+  font-size: var(--fs-small);
+}
+.hexpop input {
+  width: 64px;
+  background: var(--col-bg-2);
+  border: var(--hairline) solid var(--line);
+  color: var(--text);
+  font-size: var(--fs-small);
+  padding: 3px 5px;
+  border-radius: var(--radius);
+  text-transform: uppercase;
+}
+.hexpop input:focus {
+  outline: none;
+  border-color: var(--col-teal-deep);
+}
+.colorrow .hexval {
+  flex: 1;
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  letter-spacing: var(--letter);
 }
 .palette {
   display: flex;
@@ -824,21 +860,6 @@ input[type="range"].hot::-moz-range-thumb {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.colorrow .hex {
-  flex: 1;
-  background: var(--col-bg-2);
-  border: var(--hairline) solid var(--line);
-  color: var(--text);
-  font-size: var(--fs-small);
-  padding: 4px 6px;
-  border-radius: var(--radius);
-  text-transform: uppercase;
-  min-width: 0;
-}
-.colorrow .hex:focus {
-  outline: none;
-  border-color: var(--col-teal-deep);
 }
 
 /* gradient stops */

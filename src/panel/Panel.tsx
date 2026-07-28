@@ -4,8 +4,8 @@ import type { DitherType, GradientStop } from "../state/types";
 import { STOPS_MAX, PIXEL_LOCK_COLORS_MIN, PIXEL_LOCK_COLORS_MAX } from "../state/types";
 import { DEFAULT_PALETTES, paletteToStops } from "../state/defaults";
 import { ditherGradient } from "../pipeline/dither";
-import { isValidHex, hexToRgb } from "../util/color";
-import { Section, Slider, Toggle, Segmented } from "./controls";
+import { hexToRgb } from "../util/color";
+import { Section, Slider, Toggle, Segmented, HexSwatch } from "./controls";
 
 // Left panel. Title → Add Image → three collapsible dropdowns (all collapsed
 // on load) → export pinned at the bottom.
@@ -260,9 +260,7 @@ export function Panel({
             </div>
             {stops.map((s, i) => (
               <div className="gstop" key={i}>
-                <label className="swatch" style={{ background: s.color }}>
-                  <input type="color" value={s.color} onChange={(e) => setStop(i, { color: e.target.value })} />
-                </label>
+                <HexSwatch color={s.color} onChange={(hex) => setStop(i, { color: hex })} />
                 <input
                   type="range"
                   min={0}
@@ -290,17 +288,8 @@ export function Panel({
             <span>BACKGROUND</span>
           </div>
           <div className="colorrow">
-            <label className="swatch" style={{ background: c.background }}>
-              <input type="color" value={c.background} onChange={(e) => setColor({ background: e.target.value })} />
-            </label>
-            <input
-              className="hex"
-              value={c.background}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (isValidHex(v)) setColor({ background: v.startsWith("#") ? v : "#" + v });
-              }}
-            />
+            <HexSwatch color={c.background} onChange={(hex) => setColor({ background: hex })} />
+            <span className="hexval">{c.background.toUpperCase()}</span>
             <button
               className={"key sm" + (state.eyedropper ? " teal" : "")}
               onClick={() => patch({ eyedropper: !state.eyedropper })}
