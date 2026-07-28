@@ -19,26 +19,18 @@ export function DitherTool() {
   const [pending, setPending] = useState<Pending>(null);
   const hasImage = !!store.state.layer.image;
 
-  // --- Pixel-Lock auto grid detection ----------------------------------------
-  // Detect the native cell size once per image (the first time Pixel-Lock is
-  // active for it); after that the slider is the user's to adjust. RE-DETECT
-  // re-runs it on demand.
+  // --- Pixel-Lock grid detection ---------------------------------------------
+  // Manual only: Pixel-Lock starts at the 1px default and stays there until the
+  // slider is moved or RE-DETECT is pressed. (Auto-running this on enable was
+  // overwriting the default before it was ever visible.)
   const { setDither } = store;
   const image = store.state.layer.image;
-  const pixelLock = store.state.dither.pixelLock;
-  const detectedFor = useRef<HTMLImageElement | null>(null);
 
   const runDetect = useCallback(() => {
     if (!image) return;
-    detectedFor.current = image;
     const cell = detectPixelGrid(image);
     setDither({ pixelLockSize: cell, pixelLockAuto: cell });
   }, [image, setDither]);
-
-  useEffect(() => {
-    if (!image || !pixelLock || detectedFor.current === image) return;
-    runDetect();
-  }, [image, pixelLock, runDetect]);
 
   // Delete / Backspace removes the placed image (ignored while typing).
   // Ctrl/Cmd+Z undoes the last change (sliders, colors, bg removal, …).
@@ -106,10 +98,7 @@ export function DitherTool() {
     setRemovingBg(true);
     try {
       const cleaned = await removeSolidBackground(img);
-      if (cleaned !== img) {
-        detectedFor.current = cleaned; // same art → keep the user's pixel size
-        store.setLayer({ image: cleaned });
-      }
+      if (cleaned !== img) store.setLayer({ image: cleaned });
     } catch (err) {
       console.error("bg removal failed", err);
     } finally {
