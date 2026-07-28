@@ -1,12 +1,14 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { isValidHex } from "../util/color";
+import { isValidHex, hexToRgb, rgbToHex, hsvToRgb, rgbToHsv } from "../util/color";
 
 // Small reusable, theme-driven panel controls. No UI kit — plain elements
 // styled by styles.css. Everything is compact to match the hero references.
 
 /**
- * Color swatch that opens a HEX-ONLY entry popover (no native RGB/HSL picker).
+ * Colour swatch that opens an in-panel picker: saturation/value square + hue
+ * slider + a HEX field. Deliberately NOT <input type="color"> — that opens the
+ * OS panel with RGB/HSL number fields; here hex is the only numeric entry.
  * Type the code with or without "#"; Enter, Esc, or clicking away locks it in.
  */
 export function HexSwatch(props: {
@@ -16,49 +18,132 @@ export function HexSwatch(props: {
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [hue, setHue] = useState(0);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const svRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const rgb = hexToRgb(props.color);
+  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  // Keep the hue slider steady on greys/black, where hue is mathematically
+  // undefined and would otherwise snap back to 0 on every edit.
+  const h = hsv.s === 0 || hsv.v === 0 ? hue : hsv.h;
 
   const openPop = () => {
     setText(props.color.replace(/^#/, "").toUpperCase());
+    setHue(hsv.h);
     setOpen(true);
-    setTimeout(() => inputRef.current?.select(), 0);
   };
-  const commit = () => {
+  const commitText = () => {
     const v = text.trim().replace(/^#/, "");
     if (isValidHex(v)) props.onChange("#" + v.toLowerCase());
+  };
+  const close = () => {
+    commitText();
     setOpen(false);
   };
 
+  // click-away / Esc close the picker
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  });
+
+  const emit = (nh: number, s: number, v: number) => {
+    const c = hsvToRgb(nh, s, v);
+    const hex = rgbToHex(c.r, c.g, c.b);
+    setText(hex.replace(/^#/, "").toUpperCase());
+    props.onChange(hex);
+  };
+
+  /** drag anywhere in the SV square */
+  const pickSV = (e: React.PointerEvent) => {
+    const el = svRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const s = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const v = 1 - Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    emit(h, s, v);
+  };
+
   return (
-    <span className="swatchwrap">
+    <span className="swatchwrap" ref={wrapRef}>
       <button
         type="button"
         className="swatch"
         style={{ background: props.color }}
         title={props.title ?? props.color}
-        onClick={() => (open ? commit() : openPop())}
+        onClick={() => (open ? close() : openPop())}
       />
       {open && (
-        <span className="hexpop">
-          <span className="hash">#</span>
-          <input
-            ref={inputRef}
-            value={text}
-            maxLength={6}
-            spellCheck={false}
-            onChange={(e) =>
-              setText(e.target.value.replace(/[^0-9a-fA-F]/g, "").toUpperCase())
-            }
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === "Escape") {
-                e.preventDefault();
-                e.stopPropagation();
-                commit();
+        <div className="cpick" onPointerDown={(e) => e.stopPropagation()}>
+          <div
+            ref={svRef}
+            className="cpick__sv"
+            style={{ background: `hsl(${Math.round(h)},100%,50%)` }}
+            onPointerDown={(e) => {
+              try {
+                (e.target as Element).setPointerCapture?.(e.pointerId);
+              } catch {
+                /* no active pointer (e.g. synthetic event) — drag still works */
               }
+              pickSV(e);
+            }}
+            onPointerMove={(e) => {
+              if (e.buttons === 1) pickSV(e);
+            }}
+          >
+            <span
+              className="cpick__dot"
+              style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
+            />
+          </div>
+          <input
+            className="cpick__hue"
+            type="range"
+            min={0}
+            max={360}
+            step={1}
+            value={Math.round(h)}
+            onChange={(e) => {
+              const nh = Number(e.target.value);
+              setHue(nh);
+              emit(nh, hsv.s, hsv.v === 0 && hsv.s === 0 ? 1 : hsv.v);
             }}
           />
-        </span>
+          <div className="cpick__hex">
+            <span className="hash">#</span>
+            <input
+              ref={inputRef}
+              value={text}
+              maxLength={6}
+              spellCheck={false}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^0-9a-fA-F]/g, "").toUpperCase();
+                setText(v);
+                if (isValidHex(v)) props.onChange("#" + v.toLowerCase());
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  close();
+                }
+              }}
+            />
+          </div>
+        </div>
       )}
     </span>
   );

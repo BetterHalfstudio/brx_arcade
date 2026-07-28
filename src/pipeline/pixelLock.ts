@@ -189,59 +189,6 @@ export function detectPixelGrid(img: PixelSource): number {
 
 // --- collapse ----------------------------------------------------------------
 
-/**
- * Representative colour of a cell: cluster near-identical colours (absorbing
- * anti-aliasing halos and noise into their parent), pick the cluster with the
- * most pixels, and return that cluster's weighted-AVERAGE colour.
- *
- * Averaging (rather than the single most-frequent exact colour) is what makes
- * flat areas come out flat: in a noisy region every cell would otherwise pick a
- * slightly different random noise value and the result would be mottled. The
- * cluster is tight (threshold below), so its average lands on the intended
- * palette colour with the noise cancelled out.
- */
-function representative(freq: Map<number, number>): number {
-  if (freq.size === 0) return 0;
-  const entries = [...freq.entries()].sort((a, b) => b[1] - a[1]);
-  const TH = 40; // sum-of-abs channel distance that counts as "the same colour"
-
-  interface Cluster {
-    r: number;
-    g: number;
-    b: number;
-    count: number;
-  }
-  const clusters: Cluster[] = [];
-
-  for (const [key, cnt] of entries) {
-    const r = (key >> 16) & 255;
-    const g = (key >> 8) & 255;
-    const b = key & 255;
-    let best: Cluster | null = null;
-    let bestD = Infinity;
-    for (const c of clusters) {
-      const d = Math.abs(c.r - r) + Math.abs(c.g - g) + Math.abs(c.b - b);
-      if (d <= TH && d < bestD) {
-        bestD = d;
-        best = c;
-      }
-    }
-    if (best) {
-      const t = best.count + cnt;
-      best.r = (best.r * best.count + r * cnt) / t;
-      best.g = (best.g * best.count + g * cnt) / t;
-      best.b = (best.b * best.count + b * cnt) / t;
-      best.count = t;
-    } else {
-      clusters.push({ r, g, b, count: cnt });
-    }
-  }
-
-  let dom = clusters[0];
-  for (const c of clusters) if (c.count > dom.count) dom = c;
-  return (Math.round(dom.r) << 16) | (Math.round(dom.g) << 8) | Math.round(dom.b);
-}
-
 interface PaletteColor {
   r: number;
   g: number;
@@ -257,60 +204,71 @@ function dist2(a: PaletteColor, r: number, g: number, b: number): number {
   return dr * dr + dg * dg + db * db;
 }
 
+// Everything below runs SYNCHRONOUSLY on every slider tick, so it must stay
+// LINEAR in pixels. Colour statistics live in fixed 5-bit/channel buckets
+// (32768 typed-array slots — no Maps, no pairwise merging).
+
+const QSLOTS = 1 << 15;
+const NEAR_DUP2 = 14 * 14; // squared distance treated as "the same colour"
+
+/** 15-bit bucket key for an RGB colour. */
+function qkey(r: number, g: number, b: number): number {
+  return ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+}
+
+/** Weighted colour accumulator over the fixed bucket grid. */
+class Buckets {
+  readonly w = new Float64Array(QSLOTS);
+  readonly r = new Float64Array(QSLOTS);
+  readonly g = new Float64Array(QSLOTS);
+  readonly b = new Float64Array(QSLOTS);
+  add(r: number, g: number, b: number, weight: number): void {
+    const k = qkey(r, g, b);
+    this.w[k] += weight;
+    this.r[k] += r * weight;
+    this.g[k] += g * weight;
+    this.b[k] += b * weight;
+  }
+}
+
 /**
- * Reduce a set of cell colours to a clean palette: always merge colours that
- * are extremely close (sampling noise), then keep merging the closest pair
- * until at most `maxColors` remain. Merges are weighted, so a big flat region
- * dominates a stray near-match.
+ * Build the palette from the buckets — linear, no pairwise merging. Buckets are
+ * visited heaviest-first: within near-duplicate range of an existing entry they
+ * merge in (weighted, so big flat regions dominate); otherwise they open a new
+ * entry while under `maxColors`; once the budget is full everything else merges
+ * into its nearest entry. Cost is O(buckets × maxColors), hard-bounded.
  */
-function reducePalette(hist: Map<number, number>, maxColors: number): PaletteColor[] {
-  // Pre-bucket to 5-bit/channel so near-identical colours collapse up front and
-  // the agglomerative step below runs on a small set.
-  const buckets = new Map<number, PaletteColor>();
-  for (const [key, w] of hist) {
-    const r = (key >> 16) & 255;
-    const g = (key >> 8) & 255;
-    const b = key & 255;
-    const bk = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
-    const cur = buckets.get(bk);
-    if (cur) {
-      const t = cur.w + w;
-      cur.r = (cur.r * cur.w + r * w) / t;
-      cur.g = (cur.g * cur.w + g * w) / t;
-      cur.b = (cur.b * cur.w + b * w) / t;
-      cur.w = t;
-    } else {
-      buckets.set(bk, { r, g, b, w });
+function buildPalette(buckets: Buckets, maxColors: number): PaletteColor[] {
+  const arr: PaletteColor[] = [];
+  for (let k = 0; k < QSLOTS; k++) {
+    const w = buckets.w[k];
+    if (w > 0) {
+      arr.push({ r: buckets.r[k] / w, g: buckets.g[k] / w, b: buckets.b[k] / w, w });
     }
   }
-  const pal = [...buckets.values()];
-  const NEAR_DUP = 14 * 14; // squared distance treated as "the same colour"
+  arr.sort((a, b) => b.w - a.w);
 
-  // Agglomerative merge: collapse the closest pair while over budget OR while
-  // two colours are still near-duplicates.
-  while (pal.length > 1) {
-    let bi = 0;
-    let bj = 1;
+  const pal: PaletteColor[] = [];
+  for (const c of arr) {
+    let bi = -1;
     let bd = Infinity;
     for (let i = 0; i < pal.length; i++) {
-      for (let j = i + 1; j < pal.length; j++) {
-        const d = dist2(pal[i], pal[j].r, pal[j].g, pal[j].b);
-        if (d < bd) {
-          bd = d;
-          bi = i;
-          bj = j;
-        }
+      const d = dist2(pal[i], c.r, c.g, c.b);
+      if (d < bd) {
+        bd = d;
+        bi = i;
       }
     }
-    if (pal.length <= maxColors && bd >= NEAR_DUP) break;
-    const a = pal[bi];
-    const b = pal[bj];
-    const t = a.w + b.w;
-    a.r = (a.r * a.w + b.r * b.w) / t;
-    a.g = (a.g * a.w + b.g * b.w) / t;
-    a.b = (a.b * a.w + b.b * b.w) / t;
-    a.w = t;
-    pal.splice(bj, 1);
+    if (bi >= 0 && (bd <= NEAR_DUP2 || pal.length >= maxColors)) {
+      const p = pal[bi];
+      const t = p.w + c.w;
+      p.r = (p.r * p.w + c.r * c.w) / t;
+      p.g = (p.g * p.w + c.g * c.w) / t;
+      p.b = (p.b * p.w + c.b * c.w) / t;
+      p.w = t;
+    } else if (pal.length < maxColors) {
+      pal.push({ ...c });
+    }
   }
   for (const p of pal) {
     p.r = Math.round(p.r);
@@ -346,46 +304,99 @@ export function collapseToGrid(img: PixelSource, cell: number, maxColors: number
   const src = sctx.getImageData(0, 0, nw, nh).data;
 
   const nCells = gw * gh;
-  const freq: Map<number, number>[] = Array.from({ length: nCells }, () => new Map());
   const opaque = new Int32Array(nCells);
   const total = new Int32Array(nCells);
+  // Per-cell colour, resolved without allocating a Map per cell.
+  const cellRGB = new Int32Array(nCells).fill(-1);
+  const buckets = new Buckets();
 
-  for (let y = 0; y < nh; y++) {
-    const gj = Math.min(gh - 1, (y / c) | 0);
-    const rowBase = gj * gw;
-    for (let x = 0; x < nw; x++) {
-      const gi = Math.min(gw - 1, (x / c) | 0);
-      const ci = rowBase + gi;
-      total[ci]++;
-      const i = (y * nw + x) * 4;
-      if (src[i + 3] < 128) continue;
-      opaque[ci]++;
-      const key = (src[i] << 16) | (src[i + 1] << 8) | src[i + 2];
-      const m = freq[ci];
-      m.set(key, (m.get(key) || 0) + 1);
+  if (c === 1) {
+    // 1:1 — every source pixel IS a cell, so its own colour is the answer.
+    // Skips the whole per-cell histogram machinery (the expensive path at 1px).
+    for (let y = 0; y < nh; y++) {
+      const rowBase = Math.min(gh - 1, y) * gw;
+      for (let x = 0; x < nw; x++) {
+        const ci = rowBase + Math.min(gw - 1, x);
+        total[ci]++;
+        const i = (y * nw + x) * 4;
+        if (src[i + 3] < 128) continue;
+        opaque[ci]++;
+        const r = src[i];
+        const g = src[i + 1];
+        const b = src[i + 2];
+        cellRGB[ci] = (r << 16) | (g << 8) | b;
+        buckets.add(r, g, b, 1);
+      }
+    }
+  } else {
+    // Per-cell dominant colour via fixed 5-bit buckets — one shared typed array
+    // per cell pass, no Map allocation.
+    const cw = new Float64Array(QSLOTS);
+    const cr = new Float64Array(QSLOTS);
+    const cg = new Float64Array(QSLOTS);
+    const cb = new Float64Array(QSLOTS);
+    const touched: number[] = [];
+    // group source rows by cell row so each cell is finished before moving on
+    for (let gj = 0; gj < gh; gj++) {
+      const y0 = gj * c;
+      const y1 = Math.min(nh, y0 + c);
+      for (let gi = 0; gi < gw; gi++) {
+        const x0 = gi * c;
+        const x1 = Math.min(nw, x0 + c);
+        const ci = gj * gw + gi;
+        touched.length = 0;
+        let opq = 0;
+        let tot = 0;
+        for (let y = y0; y < y1; y++) {
+          for (let x = x0; x < x1; x++) {
+            tot++;
+            const i = (y * nw + x) * 4;
+            if (src[i + 3] < 128) continue;
+            opq++;
+            const r = src[i];
+            const g = src[i + 1];
+            const b = src[i + 2];
+            const k = qkey(r, g, b);
+            if (cw[k] === 0) touched.push(k);
+            cw[k]++;
+            cr[k] += r;
+            cg[k] += g;
+            cb[k] += b;
+          }
+        }
+        total[ci] = tot;
+        opaque[ci] = opq;
+        if (opq * 2 >= tot && touched.length) {
+          // dominant bucket = the cell's colour (averaged → denoises flat areas)
+          let bk = touched[0];
+          for (const k of touched) if (cw[k] > cw[bk]) bk = k;
+          const r = Math.round(cr[bk] / cw[bk]);
+          const g = Math.round(cg[bk] / cw[bk]);
+          const b = Math.round(cb[bk] / cw[bk]);
+          cellRGB[ci] = (r << 16) | (g << 8) | b;
+          buckets.add(r, g, b, opq);
+        }
+        for (const k of touched) {
+          cw[k] = 0;
+          cr[k] = 0;
+          cg[k] = 0;
+          cb[k] = 0;
+        }
+      }
     }
   }
 
-  // Pass 1 — resolve each cell to a single colour (or transparent), and tally a
-  // palette histogram weighted by cell size.
-  const cellRGB = new Int32Array(nCells).fill(-1);
-  const hist = new Map<number, number>();
-  for (let ci = 0; ci < nCells; ci++) {
-    if (opaque[ci] * 2 < total[ci]) continue; // mostly background → cut out
-    const rgb = representative(freq[ci]);
-    cellRGB[ci] = rgb;
-    hist.set(rgb, (hist.get(rgb) || 0) + opaque[ci]);
-  }
-
   // Reduce to the target palette, then snap every cell to its nearest entry.
-  const palette = reducePalette(hist, Math.max(1, Math.round(maxColors)));
-  const snap = new Map<number, number>(); // cache: cell colour → packed palette colour
+  const palette = buildPalette(buckets, Math.max(1, Math.round(maxColors)));
+  // Snap cache keyed by 15-bit bucket — a flat typed array, not a Map.
+  const snap = new Int32Array(QSLOTS).fill(-1);
   const nearest = (rgb: number): number => {
-    const cached = snap.get(rgb);
-    if (cached !== undefined) return cached;
     const r = (rgb >> 16) & 255;
     const g = (rgb >> 8) & 255;
     const b = rgb & 255;
+    const k = qkey(r, g, b);
+    const cached = snap[k];
+    if (cached >= 0) return cached;
     let best = palette[0];
     let bd = Infinity;
     for (const p of palette) {
@@ -396,7 +407,7 @@ export function collapseToGrid(img: PixelSource, cell: number, maxColors: number
       }
     }
     const packed = (best.r << 16) | (best.g << 8) | best.b;
-    snap.set(rgb, packed);
+    snap[k] = packed;
     return packed;
   };
 

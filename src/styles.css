@@ -723,27 +723,84 @@ input[type="range"].hot::-moz-range-thumb {
   display: inline-flex;
   flex: none;
 }
-.hexpop {
+/* colour picker popover: SV square + hue slider + hex (no RGB/HSL fields) */
+.cpick {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   z-index: 30;
+  width: 168px;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
   background: var(--panel-raised);
   border: var(--hairline) solid var(--line);
   border-left: 2px solid var(--accent);
   border-radius: var(--radius);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
 }
-.hexpop .hash {
+.cpick__sv {
+  position: relative;
+  height: 104px;
+  border-radius: 2px;
+  border: var(--hairline) solid var(--line);
+  cursor: crosshair;
+  touch-action: none;
+  background-image: linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+}
+.cpick__dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+.cpick__hue {
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  border-radius: 2px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: linear-gradient(
+    to right,
+    #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%
+  );
+}
+.cpick__hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 8px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--text);
+  border: 1px solid #0a0908;
+  cursor: pointer;
+}
+.cpick__hue::-moz-range-thumb {
+  width: 8px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--text);
+  border: 1px solid #0a0908;
+  cursor: pointer;
+}
+.cpick__hex {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cpick__hex .hash {
   color: var(--text-mute);
   font-size: var(--fs-small);
 }
-.hexpop input {
-  width: 64px;
+.cpick__hex input {
+  flex: 1;
+  min-width: 0;
   background: var(--col-bg-2);
   border: var(--hairline) solid var(--line);
   color: var(--text);
@@ -752,7 +809,7 @@ input[type="range"].hot::-moz-range-thumb {
   border-radius: var(--radius);
   text-transform: uppercase;
 }
-.hexpop input:focus {
+.cpick__hex input:focus {
   outline: none;
   border-color: var(--col-teal-deep);
 }

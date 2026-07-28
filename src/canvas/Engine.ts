@@ -72,13 +72,13 @@ export class Engine {
     this.recompute(this.state);
   }
 
-  /** Dark checkerboard (standard transparency checker under a 60% black
+  /** Dark checkerboard (standard transparency checker under an 85% black
    *  overlay) — display-only, never baked into an export. */
   private drawChecker(ctx: CanvasRenderingContext2D) {
     const SQ = 12;
-    ctx.fillStyle = "#666666"; // white @ 40%
+    ctx.fillStyle = "#262626"; // white @ 15%
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    ctx.fillStyle = "#525252"; // #ccc @ 40%
+    ctx.fillStyle = "#1f1f1f"; // #ccc @ 15%
     for (let y = 0; y * SQ < CANVAS_H; y++) {
       for (let x = (y & 1); x * SQ < CANVAS_W; x += 2) {
         ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
