@@ -729,10 +729,10 @@ input[type="range"].hot::-moz-range-thumb {
   top: calc(100% + 4px);
   left: 0;
   z-index: 30;
-  width: 168px;
+  width: 196px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
   padding: 8px;
   background: var(--panel-raised);
   border: var(--hairline) solid var(--line);
@@ -740,9 +740,11 @@ input[type="range"].hot::-moz-range-thumb {
   border-radius: var(--radius);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
 }
+/* white→hue left-to-right, black bottom-to-top, over the flat hue colour.
+   The hue itself is set inline as background-COLOR so these layers survive. */
 .cpick__sv {
   position: relative;
-  height: 104px;
+  height: 150px;
   border-radius: 2px;
   border: var(--hairline) solid var(--line);
   cursor: crosshair;

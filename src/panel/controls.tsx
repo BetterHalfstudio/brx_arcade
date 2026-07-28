@@ -91,7 +91,9 @@ export function HexSwatch(props: {
           <div
             ref={svRef}
             className="cpick__sv"
-            style={{ background: `hsl(${Math.round(h)},100%,50%)` }}
+            // backgroundColor ONLY — the `background` shorthand would reset the
+            // white/black gradient layers the stylesheet paints on top.
+            style={{ backgroundColor: `hsl(${Math.round(h)},100%,50%)` }}
             onPointerDown={(e) => {
               try {
                 (e.target as Element).setPointerCapture?.(e.pointerId);
