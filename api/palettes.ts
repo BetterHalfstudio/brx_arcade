@@ -98,17 +98,28 @@ async function storePush(item: string): Promise<void> {
   ]);
 }
 
-/** next lifetime palette number (1-based) — survives trims, never reused */
-async function storeNextN(): Promise<number> {
+/** next lifetime palette number (1-based) — survives trims, never reused.
+ *  Seeds itself past `existingCount` so palettes saved before numbering
+ *  existed (shown as inferred numbers) are never collided with. */
+async function storeNextN(existingCount: number): Promise<number> {
   const url = redisUrl();
   if (url) {
     const c = await tcpClient(url);
-    return Number(await c.incr(SEQ));
+    let n = Number(await c.incr(SEQ));
+    if (n <= existingCount) {
+      n = existingCount + 1;
+      await c.set(SEQ, String(n));
+    }
+    return n;
   }
   const rc = restCfg();
   if (!rc) throw new Error("no storage");
-  const j = await rest(rc, "", ["INCR", SEQ]);
-  return Number(j.result);
+  let n = Number((await rest(rc, "", ["INCR", SEQ])).result);
+  if (n <= existingCount) {
+    n = existingCount + 1;
+    await rest(rc, "", ["SET", SEQ, String(n)]);
+  }
+  return n;
 }
 
 const configured = () => Boolean(redisUrl() || restCfg());
@@ -166,7 +177,8 @@ export default async function handler(req: any, res: any) {
 
       // reject exact duplicates of anything already stored
       const sig = signature(stops);
-      for (const s of await storeList()) {
+      const existing = await storeList();
+      for (const s of existing) {
         try {
           if (signature(cleanStops(JSON.parse(s).stops) || []) === sig) {
             res.status(409).json({ error: "that palette is already saved" });
@@ -177,7 +189,7 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      const n = await storeNextN();
+      const n = await storeNextN(existing.length);
       await storePush(JSON.stringify({ n, stops, ts: Date.now() }));
       res.status(200).json({ ok: true, n });
       return;
