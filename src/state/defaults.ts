@@ -29,13 +29,18 @@ export const DEFAULT_PALETTES: string[][] = [
   [OFF_BLACK, "#1b2338", "#8a6d51", "#e4d1bd"], // 07 — navy / leather / tan
 ];
 
+/** Monotonic id for gradient stops (row identity for keys + animation). */
+let nextStopId = 1;
+export const stopId = () => nextStopId++;
+
 /** Spread a palette evenly across the 0..1 brightness ramp as gradient stops. */
 export function paletteToStops(colors: string[]): GradientStop[] {
-  if (colors.length === 0) return [{ pos: 0, color: OFF_BLACK }];
-  if (colors.length === 1) return [{ pos: 0, color: colors[0] }];
+  if (colors.length === 0) return [{ pos: 0, color: OFF_BLACK, id: stopId() }];
+  if (colors.length === 1) return [{ pos: 0, color: colors[0], id: stopId() }];
   return colors.map((color, i) => ({
     pos: i / (colors.length - 1),
     color,
+    id: stopId(),
   }));
 }
 
@@ -65,9 +70,9 @@ export function makeDefaultState(): AppState {
       originalColors: true,
       gradientMapOn: false,
       gradientStops: [
-        { pos: 0, color: "#0a0908" },
-        { pos: 0.5, color: "#ff3d00" },
-        { pos: 1, color: "#e7e2c6" },
+        { pos: 0, color: "#0a0908", id: stopId() },
+        { pos: 0.5, color: "#ff3d00", id: stopId() },
+        { pos: 1, color: "#e7e2c6", id: stopId() },
       ],
       hardStops: false,
       background: "#0a0908",

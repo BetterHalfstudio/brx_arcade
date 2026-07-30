@@ -50,6 +50,8 @@ export const PIXEL_LOCK_COLORS_MAX = 20;
 export interface GradientStop {
   pos: number; // 0..1
   color: string; // hex
+  /** stable identity for row keys + the reorder animation (never persisted) */
+  id: number;
 }
 
 export interface ColorState {

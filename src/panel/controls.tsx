@@ -15,6 +15,7 @@ export function HexSwatch(props: {
   color: string;
   onChange: (hex: string) => void;
   title?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -42,6 +43,11 @@ export function HexSwatch(props: {
     commitText();
     setOpen(false);
   };
+
+  // a disabled swatch never keeps a picker open
+  useEffect(() => {
+    if (props.disabled && open) setOpen(false);
+  }, [props.disabled, open]);
 
   // click-away / Esc close the picker
   useEffect(() => {
@@ -84,6 +90,7 @@ export function HexSwatch(props: {
         className="swatch"
         style={{ background: props.color }}
         title={props.title ?? props.color}
+        disabled={props.disabled}
         onClick={() => (open ? close() : openPop())}
       />
       {open && (

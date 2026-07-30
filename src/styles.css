@@ -472,6 +472,79 @@ button {
   box-shadow: inset 0 1px 0 var(--line);
 }
 
+/* Community palettes — collapsible dropdown under the presets. */
+.commsec {
+  border: var(--hairline) solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: 3px;
+  background: rgba(41, 167, 175, 0.03);
+}
+.commsec__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  font: inherit;
+  text-align: left;
+  color: var(--text-dim);
+  letter-spacing: var(--letter-wide);
+  font-size: var(--fs-small);
+  background: none;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+}
+.commsec__head:hover {
+  color: var(--text);
+}
+.commsec__head .chev {
+  color: var(--accent);
+  width: 10px;
+  display: inline-block;
+}
+.commsec__head .spacer {
+  flex: 1;
+}
+.commsec__head .val {
+  color: var(--text-mute);
+  font-size: var(--fs-small);
+}
+.commsec__body {
+  padding: 4px 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* inline name field for saving a palette */
+.saverow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.saverow input {
+  flex: 1;
+  min-width: 0;
+  background: var(--col-bg-2);
+  border: var(--hairline) solid var(--line);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-small);
+  padding: 4px 6px;
+  border-radius: var(--radius);
+  text-transform: uppercase;
+}
+.saverow input:focus {
+  outline: none;
+  border-color: var(--col-teal-deep);
+}
+
+.key:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* Pixel-Lock's AI-art settings — a styled control block, shown when the mode
    is on (not collapsible). */
 .subsec {
@@ -927,6 +1000,11 @@ input[type="range"].hot::-moz-range-thumb {
   flex-direction: column;
   gap: 4px;
 }
+.gstoplist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .gradbar {
   display: block;
   width: 100%;
@@ -939,6 +1017,9 @@ input[type="range"].hot::-moz-range-thumb {
   display: flex;
   align-items: center;
   gap: 6px;
+  /* rows rise above their siblings mid-reorder (FLIP animation) */
+  position: relative;
+  border-radius: 3px;
 }
 .gstop input[type="range"] {
   flex: 1;

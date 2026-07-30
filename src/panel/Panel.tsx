@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "../state/store";
 import type { DitherType, GradientStop } from "../state/types";
 import { STOPS_MAX, PIXEL_LOCK_COLORS_MIN, PIXEL_LOCK_COLORS_MAX } from "../state/types";
-import { DEFAULT_PALETTES, paletteToStops } from "../state/defaults";
+import { DEFAULT_PALETTES, paletteToStops, stopId } from "../state/defaults";
+import {
+  fetchCommunity,
+  saveCommunity,
+  toGradientStops,
+  stopsSignature,
+  type SharedPalette,
+} from "../state/community";
 import { ditherGradient } from "../pipeline/dither";
 import { hexToRgb } from "../util/color";
 import { Section, Slider, Toggle, Segmented, HexSwatch } from "./controls";
@@ -70,15 +77,133 @@ export function Panel({
   // and everything stays editable from there (no default/custom modes).
   const stops = c.gradientStops;
   const sorted = [...stops].sort((a, b) => a.pos - b.pos);
-  const setStop = (i: number, p: Partial<GradientStop>) =>
-    setColor({ gradientStops: stops.map((st, j) => (j === i ? { ...st, ...p } : st)) });
+  const setStop = (id: number, p: Partial<GradientStop>) =>
+    setColor({ gradientStops: stops.map((st) => (st.id === id ? { ...st, ...p } : st)) });
   const addStop = () =>
     stops.length < STOPS_MAX &&
-    setColor({ gradientStops: [...stops, { pos: 1, color: "#ffffff" }] });
-  const removeStop = (i: number) =>
-    stops.length > 2 && setColor({ gradientStops: stops.filter((_, j) => j !== i) });
+    // sorted insert: a new 100% stop lands at the bottom, below existing 100%s
+    setColor({
+      gradientStops: [...stops, { pos: 1, color: "#ffffff", id: stopId() }].sort(
+        (a, b) => a.pos - b.pos
+      ),
+    });
+  const removeStop = (id: number) =>
+    stops.length > 2 && setColor({ gradientStops: stops.filter((st) => st.id !== id) });
   const loadPreset = (i: number) =>
     setColor({ gradientMapOn: true, gradientStops: paletteToStops(DEFAULT_PALETTES[i]) });
+
+  // ---- stop rows reorder to position order when a slider is RELEASED -------
+  // FLIP animation: capture row offsets before the sort, then animate each row
+  // from its old spot to its new one; the row that was just adjusted rides on
+  // top — slightly grown, with a shadow — while it slides into place.
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const flipRef = useRef<{ prev: Map<number, number>; movedId: number } | null>(null);
+  const orderKey = stops.map((s) => s.id).join(",");
+
+  const commitOrder = (movedId: number) => {
+    const next = [...stops].sort((a, b) => a.pos - b.pos);
+    if (next.every((s, i) => s === stops[i])) return; // already in order
+    const prev = new Map<number, number>();
+    rowsRef.current
+      ?.querySelectorAll<HTMLElement>("[data-sid]")
+      .forEach((el) => prev.set(Number(el.dataset.sid), el.getBoundingClientRect().top));
+    flipRef.current = { prev, movedId };
+    setColor({ gradientStops: next });
+  };
+
+  useLayoutEffect(() => {
+    const f = flipRef.current;
+    if (!f) return;
+    flipRef.current = null;
+    rowsRef.current?.querySelectorAll<HTMLElement>("[data-sid]").forEach((el) => {
+      const id = Number(el.dataset.sid);
+      const was = f.prev.get(id);
+      if (was == null) return;
+      const dy = was - el.getBoundingClientRect().top;
+      if (!dy) return;
+      const moved = id === f.movedId;
+      if (moved) {
+        el.style.zIndex = "5";
+        el.style.background = "var(--col-bg-2)";
+      }
+      const anim = el.animate(
+        moved
+          ? [
+              { transform: `translateY(${dy}px) scale(1)`, boxShadow: "0 0 0 rgba(0,0,0,0)" },
+              {
+                transform: `translateY(${dy / 2}px) scale(1.06)`,
+                boxShadow: "0 6px 14px rgba(0,0,0,0.6)",
+                offset: 0.5,
+              },
+              { transform: "translateY(0) scale(1)", boxShadow: "0 0 0 rgba(0,0,0,0)" },
+            ]
+          : [{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }],
+        { duration: moved ? 240 : 200, easing: "cubic-bezier(0.22, 0.9, 0.3, 1)" }
+      );
+      anim.onfinish = () => {
+        el.style.zIndex = "";
+        el.style.background = "";
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderKey]);
+
+  // ---- community palettes (shared via /api/palettes) -----------------------
+  const [community, setCommunity] = useState<SharedPalette[] | null>(null);
+  const [communityErr, setCommunityErr] = useState<string | null>(null);
+  const [communityOpen, setCommunityOpen] = useState(false);
+  const [saveName, setSaveName] = useState<string | null>(null); // null = field closed
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const communityWanted = communityOpen || c.gradientMapOn;
+
+  useEffect(() => {
+    if (!communityWanted || community !== null || communityErr !== null) return;
+    let gone = false;
+    fetchCommunity()
+      .then((list) => !gone && setCommunity(list))
+      .catch((e) => !gone && setCommunityErr(e?.message || "unavailable"));
+    return () => {
+      gone = true;
+    };
+  }, [communityWanted, community, communityErr]);
+
+  // SAVE is greyed out while the current stops ARE a preset / saved palette.
+  const presetSigs = useMemo(
+    () => new Set(DEFAULT_PALETTES.map((p) => stopsSignature(paletteToStops(p)))),
+    []
+  );
+  const currentSig = stopsSignature(stops);
+  const isExisting =
+    presetSigs.has(currentSig) ||
+    (community ?? []).some((p) => stopsSignature(p.stops) === currentSig);
+
+  const loadCommunity = (p: SharedPalette) =>
+    setColor({ gradientMapOn: true, gradientStops: toGradientStops(p) });
+
+  const doSave = async () => {
+    if (saving || isExisting) return;
+    setSaving(true);
+    setNotice(null);
+    try {
+      await saveCommunity(saveName || "", sorted);
+      const mine: SharedPalette = {
+        name: (saveName || "").toUpperCase().trim().slice(0, 14),
+        stops: sorted.map((s) => ({ pos: s.pos, color: s.color })),
+        ts: Date.now(),
+      };
+      setCommunity((list) => [mine, ...(list ?? [])]);
+      setSaveName(null);
+      setNotice("✓ SAVED FOR EVERYONE");
+    } catch (e: any) {
+      setNotice("⚠ " + (e?.message || "save failed"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // background colour is meaningless while the export is transparent
+  const bgDisabled = state.exportTransparent && !crt.on;
 
 
   return (
@@ -244,6 +369,49 @@ export function Panel({
           </div>
         </div>
 
+        {/* community palettes — saved by users, visible to everyone */}
+        <div className="commsec">
+          <button
+            type="button"
+            className="commsec__head"
+            onClick={() => setCommunityOpen((o) => !o)}
+          >
+            <span className="chev">{communityOpen ? "▾" : "▸"}</span>
+            <span>COMMUNITY</span>
+            <span className="spacer" />
+            <span className="val">{community ? community.length : "···"}</span>
+          </button>
+          {communityOpen && (
+            <div className="commsec__body">
+              {communityErr ? (
+                <div className="note err">⚠ {communityErr.toUpperCase()}</div>
+              ) : community === null ? (
+                <div className="note">LOADING…</div>
+              ) : community.length === 0 ? (
+                <div className="note">NOTHING SAVED YET — BUILD A GRADIENT AND HIT SAVE</div>
+              ) : (
+                <div className="palrow">
+                  {community.map((p, i) => (
+                    <button
+                      key={(p.ts ?? 0) + "-" + i}
+                      className="palbtn"
+                      onClick={() => loadCommunity(p)}
+                      title={(p.name || "untitled") + " — load into the gradient"}
+                    >
+                      <span className="sw">
+                        {p.stops.slice(0, 4).map((s, j) => (
+                          <i key={j} style={{ background: s.color }} />
+                        ))}
+                      </span>
+                      <span className="lbl">{(p.name || `C${community.length - i}`).slice(0, 10)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {c.gradientMapOn && (
           <div className="gstops">
             <GradientPreview stops={sorted} hard={c.hardStops} type={d.type} />
@@ -258,40 +426,92 @@ export function Panel({
               <span>STOPS</span>
               <span className="val">{stops.length}/{STOPS_MAX}</span>
             </div>
-            {stops.map((s, i) => (
-              <div className="gstop" key={i}>
-                <HexSwatch color={s.color} onChange={(hex) => setStop(i, { color: hex })} />
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={s.pos}
-                  onChange={(e) => setStop(i, { pos: parseFloat(e.target.value) })}
-                />
-                <span className="gpos">{Math.round(s.pos * 100)}%</span>
-                <button className="key sm ghost" onClick={() => removeStop(i)} disabled={stops.length <= 2}>
-                  ×
-                </button>
-              </div>
-            ))}
-            {stops.length < STOPS_MAX && (
-              <button className="key sm ghost" onClick={addStop}>
+            <div className="gstoplist" ref={rowsRef}>
+              {stops.map((s) => (
+                <div className="gstop" key={s.id} data-sid={s.id}>
+                  <HexSwatch color={s.color} onChange={(hex) => setStop(s.id, { color: hex })} />
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={s.pos}
+                    onChange={(e) => setStop(s.id, { pos: parseFloat(e.target.value) })}
+                    onPointerUp={() => commitOrder(s.id)}
+                    onKeyUp={(e) => e.key.startsWith("Arrow") && commitOrder(s.id)}
+                    onBlur={() => commitOrder(s.id)}
+                  />
+                  <span className="gpos">{Math.round(s.pos * 100)}%</span>
+                  <button
+                    className="key sm ghost"
+                    onClick={() => removeStop(s.id)}
+                    disabled={stops.length <= 2}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="row">
+              <button
+                className="key sm ghost grow"
+                onClick={addStop}
+                disabled={stops.length >= STOPS_MAX}
+              >
                 + STOP
               </button>
+              <button
+                className="key sm ghost grow"
+                onClick={() => (saveName === null ? setSaveName("") : doSave())}
+                disabled={isExisting || saving}
+                title={
+                  isExisting
+                    ? "this palette is already a preset / saved palette"
+                    : "share this palette with everyone"
+                }
+              >
+                {saving ? "◴ SAVING…" : "◇ SAVE PALETTE"}
+              </button>
+            </div>
+            {saveName !== null && (
+              <div className="saverow">
+                <input
+                  autoFocus
+                  placeholder="NAME (OPTIONAL)"
+                  value={saveName}
+                  maxLength={14}
+                  spellCheck={false}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") doSave();
+                    if (e.key === "Escape") setSaveName(null);
+                  }}
+                />
+                <button className="key sm teal" onClick={doSave} disabled={saving}>
+                  ✓
+                </button>
+              </div>
             )}
+            {notice && <div className="note">{notice}</div>}
           </div>
         )}
 
-        <div className="ctl">
+        {/* greyed out while TRANSPARENT BG is exporting — the colour is unused */}
+        <div className={"ctl" + (bgDisabled ? " disabled" : "")}>
           <div className="ctl__label">
             <span>BACKGROUND</span>
+            {bgDisabled && <span className="val">TRANSPARENT</span>}
           </div>
           <div className="colorrow">
-            <HexSwatch color={c.background} onChange={(hex) => setColor({ background: hex })} />
+            <HexSwatch
+              color={c.background}
+              disabled={bgDisabled}
+              onChange={(hex) => setColor({ background: hex })}
+            />
             <span className="hexval">{c.background.toUpperCase()}</span>
             <button
               className={"key sm" + (state.eyedropper ? " teal" : "")}
+              disabled={bgDisabled}
               onClick={() => patch({ eyedropper: !state.eyedropper })}
               title="pick from canvas"
             >
