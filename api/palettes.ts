@@ -2,10 +2,15 @@
 // GET  → { palettes: [{ name, stops: [{pos,color}], ts }] }  newest first
 // POST { name?, stops } → save one palette → { ok: true }
 //
-// Storage is Upstash Redis via its REST API (the free tier is plenty) — enable
-// it from Vercel → Storage/Marketplace and the env vars appear automatically.
-// Both the Vercel-KV names and the Upstash names are accepted. Without them the
-// endpoint answers 503 and the client shows a "not set up" note.
+// Storage: a Redis database provisioned from Vercel → Storage (free tier is
+// plenty). Two transports are supported, so any of the marketplace Redis
+// products work regardless of the env-var prefix chosen at install time:
+//   1. a plain connection string (…REDIS_URL / KV_URL, redis:// or rediss://)
+//      → node-redis over TCP (this is what "Redis by Redis Inc." injects)
+//   2. an Upstash-style REST pair (…REST_API_URL + …REST_API_TOKEN) → fetch
+// Without either, the endpoint answers 503 and the client shows a note.
+
+import { createClient } from "redis";
 
 const KEY = "brx:palettes";
 const KEEP = 200; // stored
@@ -17,13 +22,42 @@ interface StoredStop {
   color: string;
 }
 
-function cfg(): { url: string; token: string } | null {
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-  return url && token ? { url, token } : null;
+function redisUrl(): string | null {
+  const env = process.env;
+  if (env.REDIS_URL) return env.REDIS_URL;
+  if (env.KV_URL) return env.KV_URL;
+  for (const k of Object.keys(env)) {
+    if (k.endsWith("REDIS_URL") && env[k]) return env[k] as string;
+  }
+  return null;
 }
 
-async function redis(c: { url: string; token: string }, path: string, body: unknown) {
+function restCfg(): { url: string; token: string } | null {
+  const env = process.env;
+  const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
+  const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token) return { url, token };
+  for (const k of Object.keys(env)) {
+    if (k.endsWith("REST_API_URL")) {
+      const t = env[k.slice(0, -3) + "TOKEN"];
+      if (env[k] && t) return { url: env[k] as string, token: t };
+    }
+  }
+  return null;
+}
+
+// TCP client is cached across warm invocations.
+let tcp: ReturnType<typeof createClient> | null = null;
+async function tcpClient(url: string) {
+  if (!tcp) {
+    tcp = createClient({ url, socket: { connectTimeout: 5000 } });
+    tcp.on("error", () => {}); // surfaced via awaited commands instead
+  }
+  if (!tcp.isOpen) await tcp.connect();
+  return tcp;
+}
+
+async function rest(c: { url: string; token: string }, path: string, body: unknown) {
   const r = await fetch(c.url + path, {
     method: "POST",
     headers: { Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" },
@@ -33,6 +67,37 @@ async function redis(c: { url: string; token: string }, path: string, body: unkn
   if (!r.ok || j?.error) throw new Error(j?.error || `storage error ${r.status}`);
   return j;
 }
+
+/** newest-first raw entries */
+async function storeList(): Promise<string[]> {
+  const url = redisUrl();
+  if (url) {
+    const c = await tcpClient(url);
+    return await c.lRange(KEY, 0, KEEP - 1);
+  }
+  const rc = restCfg();
+  if (!rc) throw new Error("no storage");
+  const j = await rest(rc, "", ["LRANGE", KEY, "0", String(KEEP - 1)]);
+  return Array.isArray(j.result) ? j.result : [];
+}
+
+async function storePush(item: string): Promise<void> {
+  const url = redisUrl();
+  if (url) {
+    const c = await tcpClient(url);
+    await c.lPush(KEY, item);
+    await c.lTrim(KEY, 0, KEEP - 1);
+    return;
+  }
+  const rc = restCfg();
+  if (!rc) throw new Error("no storage");
+  await rest(rc, "/pipeline", [
+    ["LPUSH", KEY, item],
+    ["LTRIM", KEY, "0", String(KEEP - 1)],
+  ]);
+}
+
+const configured = () => Boolean(redisUrl() || restCfg());
 
 /** Validate + normalise incoming stops (sorted, rounded, lowercase hex). */
 function cleanStops(raw: unknown): StoredStop[] | null {
@@ -52,20 +117,19 @@ const signature = (stops: StoredStop[]) =>
   stops.map((s) => `${Math.round(s.pos * 100)}:${s.color}`).join("|");
 
 export default async function handler(req: any, res: any) {
-  const c = cfg();
-  if (!c) {
+  if (!configured()) {
     res.status(503).json({
       error:
-        "Shared storage is not set up. In Vercel add the free Upstash Redis " +
-        "integration to this project (Storage tab) and redeploy.",
+        "Shared storage is not set up. In Vercel add a free Redis database " +
+        "to this project (Storage tab) and redeploy.",
     });
     return;
   }
 
   try {
     if (req.method === "GET") {
-      const j = await redis(c, "", ["LRANGE", KEY, "0", String(PAGE - 1)]);
-      const palettes = (Array.isArray(j.result) ? j.result : [])
+      const palettes = (await storeList())
+        .slice(0, PAGE)
         .map((s: string) => {
           try {
             return JSON.parse(s);
@@ -93,8 +157,7 @@ export default async function handler(req: any, res: any) {
 
       // reject exact duplicates of anything already stored
       const sig = signature(stops);
-      const existing = await redis(c, "", ["LRANGE", KEY, "0", String(KEEP - 1)]);
-      for (const s of Array.isArray(existing.result) ? existing.result : []) {
+      for (const s of await storeList()) {
         try {
           if (signature(cleanStops(JSON.parse(s).stops) || []) === sig) {
             res.status(409).json({ error: "that palette is already saved" });
@@ -105,11 +168,7 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      const item = JSON.stringify({ name, stops, ts: Date.now() });
-      await redis(c, "/pipeline", [
-        ["LPUSH", KEY, item],
-        ["LTRIM", KEY, "0", String(KEEP - 1)],
-      ]);
+      await storePush(JSON.stringify({ name, stops, ts: Date.now() }));
       res.status(200).json({ ok: true });
       return;
     }
