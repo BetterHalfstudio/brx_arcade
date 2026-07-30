@@ -4,9 +4,16 @@ import type { GradientStop } from "./types";
 import { stopId } from "./defaults";
 
 export interface SharedPalette {
-  name: string;
+  /** lifetime number assigned by the server → shown as C01, C02, … */
+  n?: number;
   stops: { pos: number; color: string }[];
   ts?: number;
+}
+
+/** display label for a shared palette (i = index in the newest-first list) */
+export function communityLabel(p: SharedPalette, i: number, total: number): string {
+  const n = p.n ?? total - i; // legacy entries without n: infer from position
+  return "C" + String(Math.max(1, n)).padStart(2, "0");
 }
 
 /** Order-independent identity of a set of stops (1% position buckets). */
@@ -29,17 +36,18 @@ export async function fetchCommunity(): Promise<SharedPalette[]> {
   return Array.isArray(j?.palettes) ? j.palettes : [];
 }
 
-export async function saveCommunity(name: string, stops: GradientStop[]): Promise<void> {
+/** Save the stops for everyone; resolves to the server-assigned number. */
+export async function saveCommunity(stops: GradientStop[]): Promise<number | undefined> {
   const r = await fetch("/api/palettes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      name,
       stops: stops.map((s) => ({ pos: s.pos, color: s.color })),
     }),
   });
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j?.error || `save failed (${r.status})`);
+  return typeof j?.n === "number" ? j.n : undefined;
 }
 
 /** A shared palette as loadable gradient stops (exact positions, fresh ids). */

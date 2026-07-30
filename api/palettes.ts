@@ -13,6 +13,7 @@
 import { createClient } from "redis";
 
 const KEY = "brx:palettes";
+const SEQ = "brx:palettes:seq"; // lifetime counter → stable C01/C02/… labels
 const KEEP = 200; // stored
 const PAGE = 60; // returned per GET
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -97,6 +98,19 @@ async function storePush(item: string): Promise<void> {
   ]);
 }
 
+/** next lifetime palette number (1-based) — survives trims, never reused */
+async function storeNextN(): Promise<number> {
+  const url = redisUrl();
+  if (url) {
+    const c = await tcpClient(url);
+    return Number(await c.incr(SEQ));
+  }
+  const rc = restCfg();
+  if (!rc) throw new Error("no storage");
+  const j = await rest(rc, "", ["INCR", SEQ]);
+  return Number(j.result);
+}
+
 const configured = () => Boolean(redisUrl() || restCfg());
 
 /** Validate + normalise incoming stops (sorted, rounded, lowercase hex). */
@@ -149,11 +163,6 @@ export default async function handler(req: any, res: any) {
         res.status(400).json({ error: "stops must be 2-12 {pos 0..1, color #rrggbb}" });
         return;
       }
-      const name = String(body.name || "")
-        .toUpperCase()
-        .replace(/[^A-Z0-9 \-_.]/g, "")
-        .trim()
-        .slice(0, 14);
 
       // reject exact duplicates of anything already stored
       const sig = signature(stops);
@@ -168,8 +177,9 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      await storePush(JSON.stringify({ name, stops, ts: Date.now() }));
-      res.status(200).json({ ok: true });
+      const n = await storeNextN();
+      await storePush(JSON.stringify({ n, stops, ts: Date.now() }));
+      res.status(200).json({ ok: true, n });
       return;
     }
 

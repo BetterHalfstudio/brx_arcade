@@ -8,6 +8,7 @@ import {
   saveCommunity,
   toGradientStops,
   stopsSignature,
+  communityLabel,
   type SharedPalette,
 } from "../state/community";
 import { ditherGradient } from "../pipeline/dither";
@@ -152,9 +153,8 @@ export function Panel({
   const [community, setCommunity] = useState<SharedPalette[] | null>(null);
   const [communityErr, setCommunityErr] = useState<string | null>(null);
   const [communityOpen, setCommunityOpen] = useState(false);
-  const [saveName, setSaveName] = useState<string | null>(null); // null = field closed
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null); // save errors only
   const communityWanted = communityOpen || c.gradientMapOn;
 
   useEffect(() => {
@@ -186,15 +186,14 @@ export function Panel({
     setSaving(true);
     setNotice(null);
     try {
-      await saveCommunity(saveName || "", sorted);
+      const n = await saveCommunity(sorted);
       const mine: SharedPalette = {
-        name: (saveName || "").toUpperCase().trim().slice(0, 14),
+        n,
         stops: sorted.map((s) => ({ pos: s.pos, color: s.color })),
         ts: Date.now(),
       };
+      // the new entry appearing in COMMUNITY (and SAVE greying out) is the feedback
       setCommunity((list) => [mine, ...(list ?? [])]);
-      setSaveName(null);
-      setNotice("✓ SAVED FOR EVERYONE");
     } catch (e: any) {
       setNotice("⚠ " + (e?.message || "save failed"));
     } finally {
@@ -285,7 +284,6 @@ export function Panel({
             <div className="ctl">
               <div className="ctl__label">
                 <span>PIXEL SIZE</span>
-                <span className="val">{d.pixelSize}×</span>
               </div>
               <Segmented
                 value={String(d.pixelSize)}
@@ -396,14 +394,14 @@ export function Panel({
                       key={(p.ts ?? 0) + "-" + i}
                       className="palbtn"
                       onClick={() => loadCommunity(p)}
-                      title={(p.name || "untitled") + " — load into the gradient"}
+                      title={communityLabel(p, i, community.length) + " — load into the gradient"}
                     >
                       <span className="sw">
                         {p.stops.slice(0, 4).map((s, j) => (
                           <i key={j} style={{ background: s.color }} />
                         ))}
                       </span>
-                      <span className="lbl">{(p.name || `C${community.length - i}`).slice(0, 10)}</span>
+                      <span className="lbl">{communityLabel(p, i, community.length)}</span>
                     </button>
                   ))}
                 </div>
@@ -462,7 +460,7 @@ export function Panel({
               </button>
               <button
                 className="key sm ghost grow"
-                onClick={() => (saveName === null ? setSaveName("") : doSave())}
+                onClick={doSave}
                 disabled={isExisting || saving}
                 title={
                   isExisting
@@ -473,57 +471,10 @@ export function Panel({
                 {saving ? "◴ SAVING…" : "◇ SAVE PALETTE"}
               </button>
             </div>
-            {saveName !== null && (
-              <div className="saverow">
-                <input
-                  autoFocus
-                  placeholder="NAME (OPTIONAL)"
-                  value={saveName}
-                  maxLength={14}
-                  spellCheck={false}
-                  onChange={(e) => setSaveName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") doSave();
-                    if (e.key === "Escape") setSaveName(null);
-                  }}
-                />
-                <button className="key sm teal" onClick={doSave} disabled={saving}>
-                  ✓
-                </button>
-              </div>
-            )}
             {notice && <div className="note">{notice}</div>}
           </div>
         )}
 
-        {/* greyed out while TRANSPARENT BG is exporting — the colour is unused */}
-        <div className={"ctl" + (bgDisabled ? " disabled" : "")}>
-          <div className="ctl__label">
-            <span>BACKGROUND</span>
-            {bgDisabled && <span className="val">TRANSPARENT</span>}
-          </div>
-          <div className="colorrow">
-            <HexSwatch
-              color={c.background}
-              disabled={bgDisabled}
-              onChange={(hex) => setColor({ background: hex })}
-            />
-            <span className="hexval">{c.background.toUpperCase()}</span>
-            <button
-              className={"key sm" + (state.eyedropper ? " teal" : "")}
-              disabled={bgDisabled}
-              onClick={() => patch({ eyedropper: !state.eyedropper })}
-              title="pick from canvas"
-            >
-              ⊹
-            </button>
-          </div>
-          {state.eyedropper && (
-            <div className="note" style={{ padding: 0 }}>
-              CLICK INSIDE THE CANVAS TO PICK
-            </div>
-          )}
-        </div>
       </Section>
 
       {/* 3 — CRT (toggle lives in the header, visible while collapsed) -------- */}
@@ -565,13 +516,36 @@ export function Panel({
             </div>
             <div className="note">CRT BAKED · BG OPAQUE · {600 * state.exportScale}×{450 * state.exportScale}</div>
           </>
-        ) : (
-          <Toggle
-            label="TRANSPARENT BG"
-            on={state.exportTransparent}
-            onChange={(v) => patch({ exportTransparent: v })}
+        ) : null}
+        {/* toggle + background swatch + eyedropper share one line */}
+        <div className="bgline">
+          {crt.on ? (
+            <span className="bgline__lbl grow">BACKGROUND</span>
+          ) : (
+            <div className="grow">
+              <Toggle
+                label="TRANSPARENT BG"
+                on={state.exportTransparent}
+                onChange={(v) => patch({ exportTransparent: v })}
+              />
+            </div>
+          )}
+          <HexSwatch
+            color={c.background}
+            disabled={bgDisabled}
+            title="background color"
+            onChange={(hex) => setColor({ background: hex })}
           />
-        )}
+          <button
+            className={"key sm" + (state.eyedropper ? " teal" : "")}
+            disabled={bgDisabled}
+            onClick={() => patch({ eyedropper: !state.eyedropper })}
+            title="pick background from canvas"
+          >
+            ⊹
+          </button>
+        </div>
+        {state.eyedropper && <div className="note">CLICK INSIDE THE CANVAS TO PICK</div>}
         <button
           className="key cream block"
           onClick={onExportImage}
