@@ -549,22 +549,36 @@ export function Panel({
           </button>
         </div>
         {state.eyedropper && <div className="note">CLICK INSIDE THE CANVAS TO PICK</div>}
-        <button
-          className="key cream block"
-          onClick={onExportImage}
-          disabled={!state.layer.image}
-          style={{ opacity: state.layer.image ? 1 : 0.4 }}
-        >
-          ▼ EXPORT PNG
-        </button>
-        <button
-          className="key block"
-          onClick={onExportFrame}
-          disabled={!state.layer.image}
-          style={{ opacity: state.layer.image ? 1 : 0.4 }}
-        >
-          ▼ EXPORT PNG · FULL FRAME
-        </button>
+        {state.mode === "bg" ? (
+          /* BG: the image IS the frame — one export, always the full canvas */
+          <button
+            className="key cream block"
+            onClick={onExportFrame}
+            disabled={!state.layer.image}
+            style={{ opacity: state.layer.image ? 1 : 0.4 }}
+          >
+            ▼ EXPORT PNG
+          </button>
+        ) : (
+          <>
+            <button
+              className="key cream block"
+              onClick={onExportImage}
+              disabled={!state.layer.image}
+              style={{ opacity: state.layer.image ? 1 : 0.4 }}
+            >
+              ▼ EXPORT PNG
+            </button>
+            <button
+              className="key block"
+              onClick={onExportFrame}
+              disabled={!state.layer.image}
+              style={{ opacity: state.layer.image ? 1 : 0.4 }}
+            >
+              ▼ EXPORT PNG · FULL FRAME
+            </button>
+          </>
+        )}
       </div>
     </aside>
   );
