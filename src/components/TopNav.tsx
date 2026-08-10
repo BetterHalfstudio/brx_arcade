@@ -19,9 +19,19 @@ export function TopNav({
         <span className="br">BRX</span>_ARCADE
       </a>
       <div className="nav__tabs">
-        <a className={"nav__tab" + (route === "/" ? " active" : "")} href="#/">
-          DITHER
-        </a>
+        {/* DITHER + its BG sub-workspace read as one connected control */}
+        <div className="nav__tabgroup">
+          <a className={"nav__tab" + (route === "/" ? " active" : "")} href="#/">
+            DITHER
+          </a>
+          <a
+            className={"nav__sub" + (route === "/bg" ? " active" : "")}
+            href="#/bg"
+            title="BG workspace — 1600px-wide canvas, any height"
+          >
+            BG
+          </a>
+        </div>
         <a
           className={"nav__tab" + (route === "/face" ? " active" : "")}
           href="#/face"

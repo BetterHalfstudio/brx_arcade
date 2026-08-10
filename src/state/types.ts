@@ -9,6 +9,14 @@
 export const CANVAS_W = 600;
 export const CANVAS_H = 450;
 
+/** BG workspace: parallax backgrounds — width locked, height follows image. */
+export const BG_W = 1600;
+export const BG_DEFAULT_H = 900; // empty-stage placeholder (the game viewport)
+
+/** Which workspace the store drives: the classic fixed canvas, or the
+ *  BG variant whose canvas is 1600px wide and as tall as the image needs. */
+export type ToolMode = "dither" | "bg";
+
 export type DitherType = "fs" | "bayer2" | "bayer4" | "bayer8";
 
 export interface Layer {
@@ -81,6 +89,11 @@ export interface CRTState {
 }
 
 export interface AppState {
+  /** which workspace this store drives (fixed at creation) */
+  mode: ToolMode;
+  /** working canvas size — fixed 600x450 in dither mode; 1600 x image-height
+   *  in bg mode */
+  canvas: { w: number; h: number };
   layer: Layer;
   dither: DitherState;
   color: ColorState;

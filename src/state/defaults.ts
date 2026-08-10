@@ -1,5 +1,5 @@
-import type { AppState, GradientStop } from "./types";
-import { CANVAS_W, CANVAS_H } from "./types";
+import type { AppState, GradientStop, ToolMode } from "./types";
+import { CANVAS_W, CANVAS_H, BG_W, BG_DEFAULT_H } from "./types";
 
 const OFF_BLACK = "#0a0908"; // shared darkest swatch across the defaults
 
@@ -44,14 +44,18 @@ export function paletteToStops(colors: string[]): GradientStop[] {
   }));
 }
 
-export function makeDefaultState(): AppState {
+export function makeDefaultState(mode: ToolMode = "dither"): AppState {
+  const w = mode === "bg" ? BG_W : CANVAS_W;
+  const h = mode === "bg" ? BG_DEFAULT_H : CANVAS_H;
   return {
+    mode,
+    canvas: { w, h },
     layer: {
       image: null,
       naturalW: 0,
       naturalH: 0,
-      x: CANVAS_W / 2,
-      y: CANVAS_H / 2,
+      x: w / 2,
+      y: h / 2,
       scale: 1,
     },
     dither: {

@@ -6,14 +6,18 @@ import type { Engine } from "../canvas/Engine";
 import { downloadBlob, stampName } from "../export/download";
 import { detectPixelGrid } from "../pipeline/pixelLock";
 import { removeSolidBackground } from "../util/removeBg";
+import type { ToolMode } from "../state/types";
 
-// The original dither/CRT tool, now mounted at the "/" route.
+// The dither/CRT tool. Two workspaces share it:
+//   "dither" — the classic fixed 600x450 canvas ("/")
+//   "bg"     — parallax backgrounds: canvas locked to 1600px wide, height
+//              follows the image, no repositioning ("/bg")
 
 // Pending overwrite request — either the toolbar button or a dropped file.
 type Pending = { kind: "button" } | { kind: "drop"; file: File } | null;
 
-export function DitherTool() {
-  const store = useAppStore();
+export function DitherTool({ mode = "dither" }: { mode?: ToolMode }) {
+  const store = useAppStore(mode);
   const engineRef = useRef<Engine | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<Pending>(null);
@@ -141,7 +145,12 @@ export function DitherTool() {
         removingBg={removingBg}
         onRedetect={runDetect}
       />
-      <CanvasStage store={store} engineRef={engineRef} onDropFile={handleDropFile} />
+      <CanvasStage
+        store={store}
+        engineRef={engineRef}
+        onDropFile={handleDropFile}
+        locked={mode === "bg"}
+      />
 
       <input
         ref={fileRef}

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { StoreApi } from "../state/store";
-import { CANVAS_W, CANVAS_H } from "../state/types";
 import { Engine } from "./Engine";
 
 // Right-hand canvas stage. Hosts the three stacked canvases, fits them to a
@@ -18,11 +17,14 @@ export function CanvasStage({
   store,
   engineRef,
   onDropFile,
+  locked = false,
 }: {
   store: StoreApi;
   engineRef: MutableRefObject<Engine | null>;
   /** App decides whether to confirm an overwrite before loading. */
   onDropFile: (file: File) => void;
+  /** BG workspace: the image IS the canvas — no move/scale/select, just look. */
+  locked?: boolean;
 }) {
   const { state } = store;
   const stageRef = useRef<HTMLDivElement>(null);
@@ -55,7 +57,9 @@ export function CanvasStage({
     engineRef.current?.setState(state);
   }, [state]);
 
-  // --- fit the 4:3 frame into the available space ----------------------------
+  // --- fit the canvas frame into the available space (any aspect) ------------
+  const canvasW = state.canvas.w;
+  const canvasH = state.canvas.h;
   useEffect(() => {
     const stage = stageRef.current!;
     const fit = () => {
@@ -66,13 +70,13 @@ export function CanvasStage({
       const availW = stage.clientWidth - padX;
       const availH = stage.clientHeight - padTop - padBottom;
       let w = availW;
-      let h = (w * CANVAS_H) / CANVAS_W;
+      let h = (w * canvasH) / canvasW;
       if (h > availH) {
         h = availH;
-        w = (h * CANVAS_W) / CANVAS_H;
+        w = (h * canvasW) / canvasH;
       }
-      w = Math.max(160, Math.floor(w));
-      h = Math.max(120, Math.floor(h));
+      w = Math.max(120, Math.floor(w));
+      h = Math.max(90, Math.floor(h));
       const frame = frameRef.current!;
       frame.style.width = w + "px";
       frame.style.height = h + "px";
@@ -82,7 +86,7 @@ export function CanvasStage({
     const ro = new ResizeObserver(fit);
     ro.observe(stage);
     return () => ro.disconnect();
-  }, []);
+  }, [canvasW, canvasH]);
 
   // --- drop loading (App gates on the overwrite confirm) ---------------------
   function onDrop(e: React.DragEvent) {
@@ -95,7 +99,7 @@ export function CanvasStage({
   // --- pointer mapping -------------------------------------------------------
   function clientToSource(clientX: number, clientY: number) {
     const rect = overlayRef.current!.getBoundingClientRect();
-    const sx = CANVAS_W / rect.width;
+    const sx = stateRef.current.canvas.w / rect.width;
     return { x: (clientX - rect.left) * sx, y: (clientY - rect.top) * sx };
   }
   function toSource(e: React.PointerEvent | React.MouseEvent) {
@@ -116,6 +120,16 @@ export function CanvasStage({
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const s = stateRef.current;
     if (!s.layer.image) return;
+
+    // locked stage (BG workspace): the eyedropper is the only interaction
+    if (locked) {
+      if (s.eyedropper) {
+        const p = toSource(e);
+        store.setColor({ background: engineRef.current!.pickColor(p.x, p.y) });
+        store.patch({ eyedropper: false });
+      }
+      return;
+    }
 
     // two fingers → pinch-to-scale + two-finger pan
     if (pointers.current.size === 2) {
@@ -227,7 +241,7 @@ export function CanvasStage({
 
   function onWheel(e: React.WheelEvent) {
     const s = stateRef.current;
-    if (!s.layer.image || !s.selected) return;
+    if (locked || !s.layer.image || !s.selected) return;
     const factor = Math.exp(-e.deltaY * 0.0012);
     const next = Math.max(0.02, Math.min(64, s.layer.scale * factor));
     store.setLayer({ scale: next });
@@ -291,7 +305,11 @@ export function CanvasStage({
           <div>
             <div className="big">{hasImage ? "RELEASE TO REPLACE" : "RELEASE TO LOAD"}</div>
             <div className="sub">
-              {hasImage ? "⚠ OVERWRITES CURRENT IMAGE" : "PNG → 600 × 450"}
+              {hasImage
+                ? "⚠ OVERWRITES CURRENT IMAGE"
+                : locked
+                  ? "PNG → 1600 WIDE · ANY HEIGHT"
+                  : "PNG → 600 × 450"}
             </div>
           </div>
         </div>
@@ -299,7 +317,7 @@ export function CanvasStage({
 
       <div className="stage__hud" style={{ position: "absolute", left: 22, bottom: 14 }}>
         <span>
-          <b>RES</b> {CANVAS_W}×{CANVAS_H}
+          <b>RES</b> {canvasW}×{canvasH}
         </span>
         {hasImage && (
           <>

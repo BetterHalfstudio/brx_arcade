@@ -27,8 +27,13 @@ export function spriteRect(layer: Layer): SpriteRect {
   };
 }
 
-export function rasterize(ctx: CanvasRenderingContext2D, layer: Layer): void {
-  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+export function rasterize(
+  ctx: CanvasRenderingContext2D,
+  layer: Layer,
+  w: number = CANVAS_W,
+  h: number = CANVAS_H
+): void {
+  ctx.clearRect(0, 0, w, h);
   if (!layer.image || layer.naturalW === 0) return;
 
   // Crisp upscaling — pixels stay square at any scale.

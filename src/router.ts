@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 // Hash routing means "/api/*" serverless paths are untouched and the static
 // host needs no SPA rewrite rules.
 
-export type Route = "/" | "/face";
+export type Route = "/" | "/bg" | "/face";
 
 function current(): Route {
   const h = window.location.hash.replace(/^#/, "");
-  return h === "/face" ? "/face" : "/";
+  if (h === "/face") return "/face";
+  if (h === "/bg") return "/bg";
+  return "/";
 }
 
 export function useHashRoute(): Route {

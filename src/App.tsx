@@ -13,7 +13,13 @@ export default function App() {
     <div className="shell">
       <TopNav route={route} faceVersion={faceVersion} onFaceVersion={setFaceVersion} />
       <div className="view">
-        {route === "/face" ? <FaceTool version={faceVersion} /> : <DitherTool />}
+        {route === "/face" ? (
+          <FaceTool version={faceVersion} />
+        ) : route === "/bg" ? (
+          <DitherTool key="bg" mode="bg" />
+        ) : (
+          <DitherTool key="dither" />
+        )}
       </div>
     </div>
   );

@@ -115,6 +115,33 @@ button {
   color: var(--col-bg);
   background: var(--accent);
 }
+/* DITHER + its BG sub-workspace: one connected control */
+.nav__tabgroup {
+  display: inline-flex;
+  align-items: stretch;
+}
+.nav__tabgroup .nav__tab {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.nav__sub {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: var(--fs-micro);
+  letter-spacing: var(--letter-wide);
+  color: var(--text-mute);
+  text-decoration: none;
+  border-left: var(--hairline) solid var(--line);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: rgba(255, 255, 255, 0.03);
+}
+.nav__sub:hover {
+  color: var(--text);
+}
+.nav__sub.active {
+  color: var(--col-bg);
+  background: var(--accent-2);
+}
 .nav__vers {
   display: flex;
   gap: 3px;

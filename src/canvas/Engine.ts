@@ -27,6 +27,9 @@ export class Engine {
   private cssW = CANVAS_W;
   private cssH = CANVAS_H;
   private dpr = 1;
+  // working (source-space) size — mirrors state.canvas
+  private srcW = CANVAS_W;
+  private srcH = CANVAS_H;
 
   private flatCtx: CanvasRenderingContext2D;
   private overlayCtx: CanvasRenderingContext2D;
@@ -77,16 +80,25 @@ export class Engine {
   private drawChecker(ctx: CanvasRenderingContext2D) {
     const SQ = 12;
     ctx.fillStyle = "#262626"; // white @ 15%
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillRect(0, 0, this.srcW, this.srcH);
     ctx.fillStyle = "#1f1f1f"; // #ccc @ 15%
-    for (let y = 0; y * SQ < CANVAS_H; y++) {
-      for (let x = (y & 1); x * SQ < CANVAS_W; x += 2) {
+    for (let y = 0; y * SQ < this.srcH; y++) {
+      for (let x = (y & 1); x * SQ < this.srcW; x += 2) {
         ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
       }
     }
   }
 
   private recompute(s: AppState) {
+    // adopt the state's working size (image-driven in BG mode)
+    this.srcW = s.canvas.w;
+    this.srcH = s.canvas.h;
+    if (this.flat.width !== this.srcW || this.flat.height !== this.srcH) {
+      this.flat.width = this.srcW;
+      this.flat.height = this.srcH;
+      this.flatCtx.imageSmoothingEnabled = false; // resizing resets ctx state
+    }
+
     // Stages 1..4 from the original source.
     this.pipeline.run(s);
     // Stage 5 — display composites over the background fill, or over a dark
@@ -94,9 +106,9 @@ export class Engine {
     const transparent = s.exportTransparent && !s.crt.on;
     const composited = this.pipeline.composite(transparent ? null : s.color.background);
 
-    // Always paint the flat 800x600 canvas: it backs the non-CRT view AND is
+    // Always paint the flat working canvas: it backs the non-CRT view AND is
     // the buffer the in-canvas eyedropper reads (even while hidden under CRT).
-    this.flatCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    this.flatCtx.clearRect(0, 0, this.srcW, this.srcH);
     if (transparent) this.drawChecker(this.flatCtx);
     this.flatCtx.drawImage(composited, 0, 0);
 
@@ -123,7 +135,7 @@ export class Engine {
     ctx.clearRect(0, 0, this.cssW, this.cssH);
     if (!s.selected || !s.layer.image) return;
 
-    const sx = this.cssW / CANVAS_W; // source→display scale (4:3 preserved)
+    const sx = this.cssW / this.srcW; // source→display scale (aspect preserved)
     const r = spriteRect(s.layer);
     const x = r.x * sx;
     const y = r.y * sx;
@@ -150,8 +162,8 @@ export class Engine {
 
   /** Read the composited color at a source-space pixel (in-canvas eyedropper). */
   pickColor(sx: number, sy: number): string {
-    const x = Math.max(0, Math.min(CANVAS_W - 1, Math.round(sx)));
-    const y = Math.max(0, Math.min(CANVAS_H - 1, Math.round(sy)));
+    const x = Math.max(0, Math.min(this.srcW - 1, Math.round(sx)));
+    const y = Math.max(0, Math.min(this.srcH - 1, Math.round(sy)));
     const d = this.flatCtx.getImageData(x, y, 1, 1).data;
     const h = (v: number) => v.toString(16).padStart(2, "0");
     return "#" + h(d[0]) + h(d[1]) + h(d[2]);
@@ -159,30 +171,32 @@ export class Engine {
 
   /** Source-space sprite rect, in CSS display pixels (for hit-testing). */
   displayRect(s: AppState) {
-    const sx = this.cssW / CANVAS_W;
+    const sx = this.cssW / s.canvas.w;
     const r = spriteRect(s.layer);
     return { x: r.x * sx, y: r.y * sx, w: r.w * sx, h: r.h * sx, scale: sx };
   }
 
   /**
    * Export JUST THE IMAGE: the processed sprite cropped to its visible pixels,
-   * not the full 600x450 frame. Always the flat result (CRT is a full-frame
-   * effect, so it only applies to the full-frame export). TRANSPARENT BG still
-   * decides alpha vs background fill — the display checker is never baked.
+   * not the full frame. Always the flat result (CRT is a full-frame effect, so
+   * it only applies to the full-frame export). TRANSPARENT BG still decides
+   * alpha vs background fill — the display checker is never baked.
    */
   async exportImagePNG(s: AppState): Promise<Blob> {
+    const W = s.canvas.w;
+    const H = s.canvas.h;
     this.pipeline.run(s); // ensure fresh
     const src = this.pipeline.composite(null); // flat result, alpha preserved
-    const data = src.getContext("2d")!.getImageData(0, 0, CANVAS_W, CANVAS_H).data;
+    const data = src.getContext("2d")!.getImageData(0, 0, W, H).data;
 
     // bounding box of non-transparent pixels
-    let x0 = CANVAS_W;
-    let y0 = CANVAS_H;
+    let x0 = W;
+    let y0 = H;
     let x1 = -1;
     let y1 = -1;
-    for (let y = 0; y < CANVAS_H; y++) {
-      for (let x = 0; x < CANVAS_W; x++) {
-        if (data[(y * CANVAS_W + x) * 4 + 3] === 0) continue;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (data[(y * W + x) * 4 + 3] === 0) continue;
         if (x < x0) x0 = x;
         if (x > x1) x1 = x;
         if (y < y0) y0 = y;
@@ -220,8 +234,8 @@ export class Engine {
     const src = this.pipeline.composite(bg);
     // Copy to a detached canvas so we never hand out a live buffer.
     const out = document.createElement("canvas");
-    out.width = CANVAS_W;
-    out.height = CANVAS_H;
+    out.width = s.canvas.w;
+    out.height = s.canvas.h;
     out.getContext("2d")!.drawImage(src, 0, 0);
     return canvasToBlob(out);
   }

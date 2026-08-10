@@ -5,8 +5,9 @@ import type {
   DitherState,
   ColorState,
   CRTState,
+  ToolMode,
 } from "./types";
-import { CANVAS_W, CANVAS_H } from "./types";
+import { CANVAS_W, CANVAS_H, BG_W, BG_DEFAULT_H } from "./types";
 import { makeDefaultState } from "./defaults";
 
 // Central state + typed update helpers. One immutable slice update per call so
@@ -36,8 +37,8 @@ export interface StoreApi {
 /** Patch keys that are transient UI state — not worth an undo step on their own. */
 const UNRECORDED_KEYS = new Set<keyof AppState>(["selected", "eyedropper"]);
 
-export function useAppStore(): StoreApi {
-  const [state, setState] = useState<AppState>(makeDefaultState);
+export function useAppStore(mode: ToolMode = "dither"): StoreApi {
+  const [state, setState] = useState<AppState>(() => makeDefaultState(mode));
   const history = useRef<AppState[]>([]);
   const lastChange = useRef(0);
 
@@ -71,15 +72,39 @@ export function useAppStore(): StoreApi {
         else setState((s) => ({ ...s, ...p }));
       },
       clearImage: () =>
-        recorded((s) => ({
-          ...s,
-          layer: { image: null, naturalW: 0, naturalH: 0, x: CANVAS_W / 2, y: CANVAS_H / 2, scale: 1 },
-          selected: false,
-        })),
+        recorded((s) => {
+          const cw = s.mode === "bg" ? BG_W : CANVAS_W;
+          const ch = s.mode === "bg" ? BG_DEFAULT_H : CANVAS_H;
+          return {
+            ...s,
+            canvas: { w: cw, h: ch },
+            layer: { image: null, naturalW: 0, naturalH: 0, x: cw / 2, y: ch / 2, scale: 1 },
+            selected: false,
+          };
+        }),
       loadImage: (img: HTMLImageElement) =>
         recorded((s) => {
           const w = img.naturalWidth;
           const h = img.naturalHeight;
+          if (s.mode === "bg") {
+            // BG workspace: the canvas IS the image — width locked to BG_W,
+            // height follows, the layer exactly covers it (no repositioning).
+            const scale = BG_W / w;
+            const ch = Math.max(1, Math.round(h * scale));
+            return {
+              ...s,
+              canvas: { w: BG_W, h: ch },
+              layer: {
+                image: img,
+                naturalW: w,
+                naturalH: h,
+                x: BG_W / 2,
+                y: ch / 2,
+                scale,
+              },
+              selected: false,
+            };
+          }
           // Fit ~85% of the frame; center it; select it.
           const scale = Math.min(
             (CANVAS_W * 0.85) / w,

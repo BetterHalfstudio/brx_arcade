@@ -1,6 +1,5 @@
 import { VERT, FRAG } from "./shaders";
 import type { CRTState } from "../state/types";
-import { CANVAS_W, CANVAS_H } from "../state/types";
 
 // Animated WebGL2 CRT post-process. Samples a source canvas (the composited
 // 800x600 pipeline output) with NEAREST filtering and renders effects into its
@@ -106,7 +105,7 @@ export class CRTRenderer {
     );
 
     const p = this.params;
-    gl.uniform2f(this.u.u_texRes, CANVAS_W, CANVAS_H);
+    gl.uniform2f(this.u.u_texRes, this.source.width, this.source.height);
     gl.uniform2f(this.u.u_outRes, this.canvas.width, this.canvas.height);
     gl.uniform1f(this.u.u_time, timeSec);
     gl.uniform1f(this.u.u_barrel, p.barrel);
@@ -140,8 +139,8 @@ export class CRTRenderer {
    */
   grab(scale: number): HTMLCanvasElement {
     const gl = this.gl;
-    const w = CANVAS_W * scale;
-    const h = CANVAS_H * scale;
+    const w = (this.source?.width || 1) * scale;
+    const h = (this.source?.height || 1) * scale;
     const liveW = this.canvas.width;
     const liveH = this.canvas.height;
     this.resize(w, h);

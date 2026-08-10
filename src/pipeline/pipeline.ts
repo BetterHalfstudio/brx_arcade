@@ -10,6 +10,8 @@ import type { AppState } from "../state/types";
 // Recomputes stages 1..4 from the ORIGINAL source on every run() — never from
 // prior output. Pixelation (block size) is handled by processing at a reduced
 // resolution and nearest-upscaling back, so each "pixel" becomes an NxN block.
+// Canvas size comes from state (fixed in DITHER mode, image-driven in BG mode);
+// all scratch canvases resize lazily to match.
 
 function makeCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement("canvas");
@@ -32,6 +34,10 @@ export class Pipeline {
   private readonly comp: HTMLCanvasElement;
   private readonly compCtx: CanvasRenderingContext2D;
 
+  /** current working size (mirrors state.canvas) */
+  private w = CANVAS_W;
+  private h = CANVAS_H;
+
   /** Pixel-Lock collapse cache — recomputed only when the image, cell size, or
    *  colour count changes, not on every position/scale/colour tweak. */
   private plImage: HTMLImageElement | null = null;
@@ -47,9 +53,23 @@ export class Pipeline {
     [this.comp, this.compCtx] = makeCanvas();
   }
 
+  /** Resize every scratch canvas when the working size changes. */
+  private ensureSize(w: number, h: number): void {
+    if (this.w === w && this.h === h) return;
+    this.w = w;
+    this.h = h;
+    for (const c of [this.srcCtx.canvas, this.small, this.resultCanvas, this.comp]) {
+      c.width = w;
+      c.height = h;
+    }
+  }
+
   /** Stages 1..4 → resultCanvas. Pure function of state + the original image. */
   run(state: AppState): void {
     const { dither: d, color } = state;
+    this.ensureSize(state.canvas.w, state.canvas.h);
+    const W = this.w;
+    const H = this.h;
 
     // PIXEL-LOCK — an alternative to the dither path. Collapse the source to its
     // native grid (one solid colour per cell), place it, apply levels + a
@@ -64,10 +84,10 @@ export class Pipeline {
         this.plColors = colors;
       }
       const r = spriteRect(state.layer);
-      this.srcCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      this.srcCtx.clearRect(0, 0, W, H);
       this.srcCtx.imageSmoothingEnabled = false; // keep the grid crisp
       this.srcCtx.drawImage(this.plCanvas!, r.x, r.y, r.w, r.h);
-      const img = this.srcCtx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+      const img = this.srcCtx.getImageData(0, 0, W, H);
       applyLevels(img.data, buildLevelsLut(d));
       recolorSolid(img.data, color);
       this.resultCtx.putImageData(img, 0, 0);
@@ -75,29 +95,29 @@ export class Pipeline {
     }
 
     // 1 — rasterize the placed sprite (source of truth)
-    rasterize(this.srcCtx, state.layer);
+    rasterize(this.srcCtx, state.layer, W, H);
 
     // pixelation: process at reduced resolution, upscale blocks back
     const B = Math.max(1, Math.round(d.pixelSize));
-    const wq = Math.max(1, Math.ceil(CANVAS_W / B));
-    const hq = Math.max(1, Math.ceil(CANVAS_H / B));
+    const wq = Math.max(1, Math.ceil(W / B));
+    const hq = Math.max(1, Math.ceil(H / B));
 
     let img: ImageData;
     if (B > 1) {
       this.smallCtx.imageSmoothingEnabled = true; // average blocks down
-      this.smallCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-      this.smallCtx.drawImage(this.srcCtx.canvas, 0, 0, CANVAS_W, CANVAS_H, 0, 0, wq, hq);
+      this.smallCtx.clearRect(0, 0, W, H);
+      this.smallCtx.drawImage(this.srcCtx.canvas, 0, 0, W, H, 0, 0, wq, hq);
       img = this.smallCtx.getImageData(0, 0, wq, hq);
     } else {
-      img = this.srcCtx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+      img = this.srcCtx.getImageData(0, 0, W, H);
     }
     const data = img.data;
 
     // 2 — levels (pre-dither)
     applyLevels(data, buildLevelsLut(d));
 
-    const dw = B > 1 ? wq : CANVAS_W;
-    const dh = B > 1 ? hq : CANVAS_H;
+    const dw = B > 1 ? wq : W;
+    const dh = B > 1 ? hq : H;
 
     // 3 — dither + recolour.
     if (color.gradientMapOn) {
@@ -124,24 +144,24 @@ export class Pipeline {
     // write back, upscaling the reduced buffer into NxN blocks if pixelated
     if (B > 1) {
       this.smallCtx.putImageData(img, 0, 0);
-      this.resultCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      this.resultCtx.clearRect(0, 0, W, H);
       this.resultCtx.imageSmoothingEnabled = false;
-      this.resultCtx.drawImage(this.small, 0, 0, wq, hq, 0, 0, CANVAS_W, CANVAS_H);
+      this.resultCtx.drawImage(this.small, 0, 0, wq, hq, 0, 0, W, H);
     } else {
       this.resultCtx.putImageData(img, 0, 0);
     }
   }
 
   /**
-   * Stage 5 composite. Returns a CANVAS_W x CANVAS_H canvas:
+   * Stage 5 composite. Returns a canvas at the current working size:
    *   background != null -> opaque fill with the result drawn over it
    *   background == null -> the flat result as-is (transparent where empty)
    */
   composite(background: string | null): HTMLCanvasElement {
     if (background == null) return this.resultCanvas;
-    this.compCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    this.compCtx.clearRect(0, 0, this.w, this.h);
     this.compCtx.fillStyle = background;
-    this.compCtx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    this.compCtx.fillRect(0, 0, this.w, this.h);
     this.compCtx.drawImage(this.resultCanvas, 0, 0);
     return this.comp;
   }

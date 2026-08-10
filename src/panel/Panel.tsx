@@ -514,7 +514,10 @@ export function Panel({
                 onChange={(v) => patch({ exportScale: Number(v) as 1 | 2 | 3 })}
               />
             </div>
-            <div className="note">CRT BAKED · BG OPAQUE · {600 * state.exportScale}×{450 * state.exportScale}</div>
+            <div className="note">
+              CRT BAKED · BG OPAQUE · {state.canvas.w * state.exportScale}×
+              {state.canvas.h * state.exportScale}
+            </div>
           </>
         ) : null}
         {/* toggle + background swatch + eyedropper share one line */}
