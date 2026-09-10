@@ -59,7 +59,10 @@ const V2_PROMPT =
   "FRAMING — centered, facing forward, cropped at the upper chest, with the " +
   "bottom edge following the natural silhouette of the shoulders or clothing " +
   "rather than a straight horizontal cut. Large head, narrow neck, simplified " +
-  "shoulders.\n\n" +
+  "shoulders. The complete figure — including the bottom of the bust — must " +
+  "sit fully INSIDE the frame with clear background margin on all four sides: " +
+  "the silhouette is a closed shape that never touches or runs off any edge " +
+  "of the image.\n\n" +
   "BACKGROUND — completely flat, solid #0047BB blue. No gradients, textures, " +
   "patterns, objects, scenery, text, or additional colors.\n\n" +
   "The result should read as a fresh portrait by the reference's artist — the " +

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Slider, Toggle, Segmented } from "../panel/controls";
 import { stylize, downscaleToBase64, type InlineImage, type StylizeDebug } from "../face/api";
 import { facePixelArt, upscale } from "../face/finisher";
+import { generateAvatar } from "../face/generate";
 import { segmentPerson, applyCutout, type SegEngine, type SegMask } from "../face/segment";
 import { downloadBlob, stampName } from "../export/download";
 import { faceVersion } from "../face/versions";
@@ -35,7 +36,11 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
   const prompt = promptText;
 
   const [source, setSource] = useState<Source | null>(null);
-  const [result, setResult] = useState<HTMLImageElement | null>(null);
+  const [result, setResult] = useState<Source | null>(null);
+  /** set when the result came from the validated pipeline: alpha already cut,
+   *  threshold possibly adapted per image */
+  const [genInfo, setGenInfo] = useState<{ threshold: number } | null>(null);
+  const [busyLabel, setBusyLabel] = useState("STYLIZING…");
   const [camOn, setCamOn] = useState(false);
   const [styleRef, setStyleRef] = useState<InlineImage | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,10 +82,11 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
     blackPoint,
     whitePoint,
     gamma,
-    threshold: FACE_THRESHOLD,
+    threshold: genInfo?.threshold ?? FACE_THRESHOLD,
     dark: FACE_DARK,
     lit: FACE_LIT,
-    bg: (isFree ? "none" : cfg.bg) as "flood" | "chroma" | "none",
+    // pipeline results and FREE cutouts already carry their alpha
+    bg: (isFree || genInfo ? "none" : cfg.bg) as "flood" | "chroma" | "none",
     autoLight: autoLight
       ? { targetMid: alMid, clipLo: alClipLo, clipHi: alClipHi, flatten: alFlatten }
       : null,
@@ -126,6 +132,7 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
       e.preventDefault();
       setSource(null);
       setResult(null);
+      setGenInfo(null);
       setCut(null);
       segMask.current = null;
       stopCam();
@@ -173,6 +180,7 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
     c.height = v.videoHeight;
     c.getContext("2d")!.drawImage(v, 0, 0);
     setResult(null);
+    setGenInfo(null);
     setCut(null);
     segMask.current = null;
     setSource(c);
@@ -200,6 +208,7 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
     const img = new Image();
     img.onload = () => {
       setResult(null);
+      setGenInfo(null);
       setCut(null);
       segMask.current = null;
       setSource(img);
@@ -248,33 +257,53 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
   }, [maskThresh, maskFeather, maskEdge]);
 
   // --- stylize (Gemini versions only) ----------------------------------------
+  // V2 goes through the validated pipeline (cutout fallback, tone rescue,
+  // framing re-rolls). V1 keeps the raw single-shot path.
   async function onStylize() {
     if (!source || busy) return;
     setBusy(true);
+    setBusyLabel("STYLIZING…");
     setError(null);
     try {
-      const face = downscaleToBase64(source, 768, "image/jpeg", 0.92);
-      const out = await stylize(
-        face,
-        prompt,
-        styleRef ? [{ data: styleRef.data, mimeType: styleRef.mimeType }] : []
-      );
-      if (out.debug) {
-        console.log("[stylize] exact request sent to Gemini:", out.debug);
-        setSent(out.debug);
-      }
-      const img = new Image();
-      img.onload = () => {
+      if (cfg.bg === "chroma") {
+        const res = await generateAvatar({
+          source,
+          prompt,
+          styleRef,
+          // always adapt from the BAKED threshold, not a previous adaptation
+          baked: { ...faceOpts, threshold: FACE_THRESHOLD },
+          maxAttempts: 3,
+          onStatus: setBusyLabel,
+        });
+        if (res.debug) {
+          console.log("[stylize] exact request sent to Gemini:", res.debug);
+          setSent(res.debug);
+        }
+        setResult(res.cut);
+        setGenInfo({ threshold: res.threshold });
+      } else {
+        const face = downscaleToBase64(source, 768, "image/jpeg", 0.92);
+        const out = await stylize(
+          face,
+          prompt,
+          styleRef ? [{ data: styleRef.data, mimeType: styleRef.mimeType }] : []
+        );
+        if (out.debug) {
+          console.log("[stylize] exact request sent to Gemini:", out.debug);
+          setSent(out.debug);
+        }
+        const img = await new Promise<HTMLImageElement>((res2, rej) => {
+          const im = new Image();
+          im.onload = () => res2(im);
+          im.onerror = () => rej(new Error("could not decode model output"));
+          im.src = `data:${out.mimeType};base64,${out.image}`;
+        });
         setResult(img);
-        setBusy(false);
-      };
-      img.onerror = () => {
-        setError("could not decode model output");
-        setBusy(false);
-      };
-      img.src = `data:${out.mimeType};base64,${out.image}`;
+        setGenInfo(null);
+      }
     } catch (e: any) {
       setError(e?.message || "stylize failed");
+    } finally {
       setBusy(false);
     }
   }
@@ -299,10 +328,13 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
     ctx.drawImage(sprite, 0, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    source, result, cut, version,
+    source, result, cut, genInfo, version,
     blackPoint, whitePoint, gamma,
     autoLight, alMid, alClipLo, alClipHi, alFlatten,
   ]);
+
+  // an adapted threshold belongs to the version that produced it
+  useEffect(() => setGenInfo(null), [version]);
 
   function onExport() {
     if (!base) return;
@@ -391,7 +423,7 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
                 style={{ opacity: !source || busy ? 0.45 : 1 }}
                 onClick={onStylize}
               >
-                {busy ? "◴ STYLIZING…" : "▶ STYLIZE"}
+                {busy ? `◴ ${busyLabel}` : "▶ STYLIZE"}
               </button>
               {sent && (
                 <div className="note">

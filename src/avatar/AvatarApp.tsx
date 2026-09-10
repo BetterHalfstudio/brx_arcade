@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { stylize, downscaleToBase64, type InlineImage } from "../face/api";
+import { downscaleToBase64, type InlineImage } from "../face/api";
 import { facePixelArt, upscale } from "../face/finisher";
+import { generateAvatar, type GenResult } from "../face/generate";
 import { faceVersion } from "../face/versions";
 import { downloadBlob, stampName } from "../export/download";
 import {
@@ -53,8 +54,9 @@ export function AvatarApp() {
   const [checking, setChecking] = useState(false);
 
   const [source, setSource] = useState<Source | null>(null);
-  const [result, setResult] = useState<HTMLImageElement | null>(null);
+  const [result, setResult] = useState<GenResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState("GENERATING…");
   const [error, setError] = useState<string | null>(null);
   const [styleRef, setStyleRef] = useState<InlineImage | null>(null);
 
@@ -204,31 +206,26 @@ export function AvatarApp() {
     }
   }
 
-  // --- generate --------------------------------------------------------------
+  // --- generate (validated: cutout fallback, tone rescue, framing re-rolls) --
   async function onGenerate() {
     if (!source || busy) return;
     setBusy(true);
+    setBusyLabel("GENERATING…");
     setError(null);
     try {
-      const face = downscaleToBase64(source, 768, "image/jpeg", 0.92);
-      const out = await stylize(
-        face,
-        V2.prompts[0].text,
-        styleRef ? [{ data: styleRef.data, mimeType: styleRef.mimeType }] : []
-      );
-      const img = new Image();
-      img.onload = () => {
-        setResult(img);
-        setStage("result");
-        setBusy(false);
-      };
-      img.onerror = () => {
-        setError("could not read the generated image — try again");
-        setBusy(false);
-      };
-      img.src = `data:${out.mimeType};base64,${out.image}`;
+      const res = await generateAvatar({
+        source,
+        prompt: V2.prompts[0].text,
+        styleRef,
+        baked: BAKED,
+        maxAttempts: 3,
+        onStatus: setBusyLabel,
+      });
+      setResult(res);
+      setStage("result");
     } catch (e: any) {
       setError(e?.message || "generation failed — try again");
+    } finally {
       setBusy(false);
     }
   }
@@ -244,20 +241,24 @@ export function AvatarApp() {
     cv.getContext("2d")!.drawImage(source, 0, 0);
   }, [stage, source]);
 
+  const finish = (r: GenResult) =>
+    facePixelArt(r.cut, { ...BAKED, bg: "none", threshold: r.threshold });
+
   useEffect(() => {
     if (stage !== "result" || !result || !spriteRef.current) return;
-    const sprite = facePixelArt(result, BAKED);
+    const sprite = finish(result);
     const cv = spriteRef.current;
     cv.width = sprite.width;
     cv.height = sprite.height;
     const ctx = cv.getContext("2d")!;
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(sprite, 0, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, result]);
 
   function onExport() {
     if (!result) return;
-    const sprite = facePixelArt(result, BAKED);
+    const sprite = finish(result);
     const factor = Math.max(1, Math.round(512 / sprite.height));
     upscale(sprite, factor).toBlob((b) => b && downloadBlob(b, stampName()), "image/png");
   }
@@ -369,7 +370,7 @@ export function AvatarApp() {
                   onClick={onGenerate}
                   disabled={busy || !styleRef}
                 >
-                  {busy ? "◴ GENERATING…" : "★ GENERATE AVATAR"}
+                  {busy ? `◴ ${busyLabel}` : "★ GENERATE AVATAR"}
                 </button>
               </>
             )}
