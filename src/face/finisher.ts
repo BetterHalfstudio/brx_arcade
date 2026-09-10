@@ -2,6 +2,7 @@ import { dither } from "../pipeline/dither";
 import { buildLevelsLut, applyLevels } from "../pipeline/levels";
 import type { DitherType } from "../state/types";
 import { paletteToBytes, hexToRgb } from "../util/color";
+import { applyAutoLight, type AutoLightOpts } from "./autolight";
 
 // The "pixel lock": the deterministic finisher that normalizes any stylized
 // output to a fixed sprite resolution + palette + dither, so every caricature
@@ -104,7 +105,10 @@ export interface FaceOpts {
   threshold: number; // black/lit cutoff
   dark: string; // "off" colour (black)
   lit: string; // "on" colour (#FF3D00)
-  bg: "flood" | "chroma"; // background-removal strategy
+  /** background-removal strategy — "none" when the source is already cut out */
+  bg: "flood" | "chroma" | "none";
+  /** lighting normalization, applied pre-levels (null = off) */
+  autoLight?: AutoLightOpts | null;
 }
 
 /**
@@ -148,7 +152,9 @@ export function facePixelArt(
 
   const img = ctx.getImageData(0, 0, tw, th);
   if (opts.bg === "chroma") removeChromaBackground(img.data);
-  else removeBorderBackground(img.data, tw, th);
+  else if (opts.bg === "flood") removeBorderBackground(img.data, tw, th);
+  // "none": alpha already carries the cutout (FREE segmentation path)
+  if (opts.autoLight) applyAutoLight(img.data, tw, th, opts.autoLight);
   applyLevels(img.data, buildLevelsLut(opts));
   // 1-bit dither: luma vs threshold, with the selected dither pattern
   dither(img.data, tw, th, {

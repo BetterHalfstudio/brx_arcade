@@ -1,8 +1,9 @@
 // FACE tool versions, selectable from the nav. v1 is the current behaviour;
 // v2 is the "grayscale subject on a solid chroma background, keyed out by
-// colour" approach for cleaner, more consistent isolation.
+// colour" approach for cleaner, more consistent isolation; FREE skips the AI
+// entirely — in-browser person segmentation + the same dither finisher, $0.
 
-export type BgMode = "flood" | "chroma";
+export type BgMode = "flood" | "chroma" | "segment";
 
 export interface PromptPreset {
   label: string;
@@ -74,6 +75,13 @@ export const FACE_VERSIONS: FaceVersion[] = [
     // ?v bump busts the browser cache when the reference image is updated
     styleRef: "/style-ref-2.png?v=2",
     bg: "chroma",
+  },
+  {
+    id: 3,
+    label: "FREE",
+    prompts: [], // no AI step — segmentation + finisher only
+    styleRef: "",
+    bg: "segment",
   },
 ];
 
