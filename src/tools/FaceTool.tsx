@@ -6,13 +6,17 @@ import { segmentPerson, applyCutout, type SegEngine, type SegMask } from "../fac
 import { downloadBlob, stampName } from "../export/download";
 import { faceVersion } from "../face/versions";
 
-// Fixed: sprite height, dither pattern, threshold, and the two output colours.
-// Adjustable: levels, AUTO LIGHT normalization, and (FREE) the cutout mask.
-const FACE_TARGET_H = 144;
-const FACE_TYPE = "bayer2" as const;
-const FACE_THRESHOLD = 124;
-const FACE_DARK = "#000000";
-const FACE_LIT = "#ff3d00";
+// Fixed sprite/palette/dither + baked levels live in face/baked.ts (shared
+// with the standalone avatar kiosk). Dev mode exposes the tuning sliders.
+import {
+  FACE_TARGET_H,
+  FACE_TYPE,
+  FACE_THRESHOLD,
+  FACE_DARK,
+  FACE_LIT,
+  BAKED_LEVELS,
+  BAKED_AUTOLIGHT,
+} from "../face/baked";
 
 const SEG_ENGINES: { value: SegEngine; label: string }[] = [
   { value: "mediapipe", label: "MEDIAPIPE" },
@@ -40,17 +44,17 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
   const [flash, setFlash] = useState(false);
 
   // levels — BAKED defaults (dialled in by hand); only dev mode shows the UI
-  const [blackPoint, setBlackPoint] = useState(96);
-  const [whitePoint, setWhitePoint] = useState(172);
-  const [gamma, setGamma] = useState(1.27);
+  const [blackPoint, setBlackPoint] = useState(BAKED_LEVELS.blackPoint);
+  const [whitePoint, setWhitePoint] = useState(BAKED_LEVELS.whitePoint);
+  const [gamma, setGamma] = useState(BAKED_LEVELS.gamma);
 
   // AUTO LIGHT — lighting normalization so different photos / Gemini renders
   // hit the dither with the same tonal distribution. Baked ON.
   const [autoLight, setAutoLight] = useState(true);
-  const [alMid, setAlMid] = useState(0.52);
-  const [alClipLo, setAlClipLo] = useState(0);
-  const [alClipHi, setAlClipHi] = useState(100);
-  const [alFlatten, setAlFlatten] = useState(0);
+  const [alMid, setAlMid] = useState(BAKED_AUTOLIGHT.targetMid);
+  const [alClipLo, setAlClipLo] = useState(BAKED_AUTOLIGHT.clipLo);
+  const [alClipHi, setAlClipHi] = useState(BAKED_AUTOLIGHT.clipHi);
+  const [alFlatten, setAlFlatten] = useState(BAKED_AUTOLIGHT.flatten);
 
   // FREE cutout — probability mask cached per (source, engine); the sliders
   // re-compose from the cache without re-running the model.
