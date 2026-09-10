@@ -47,14 +47,35 @@ function restCfg(): { url: string; token: string } | null {
   return null;
 }
 
-// TCP client is cached across warm invocations.
+/** Reject after `ms` so a dead database returns a clean 500 with a message
+ *  instead of hanging the function into the platform's opaque 504. */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} timed out`)), ms)),
+  ]);
+}
+
+// TCP client is cached across warm invocations. No auto-reconnect and no
+// offline queueing — a broken connection must FAIL fast, not buffer forever.
 let tcp: ReturnType<typeof createClient> | null = null;
 async function tcpClient(url: string) {
   if (!tcp) {
-    tcp = createClient({ url, socket: { connectTimeout: 5000 } });
+    tcp = createClient({
+      url,
+      socket: { connectTimeout: 5000, reconnectStrategy: false },
+      disableOfflineQueue: true,
+    });
     tcp.on("error", () => {}); // surfaced via awaited commands instead
   }
-  if (!tcp.isOpen) await tcp.connect();
+  if (!tcp.isOpen) {
+    try {
+      await withTimeout(tcp.connect(), 6000, "redis connect");
+    } catch (e) {
+      tcp = null; // next invocation starts from a fresh client
+      throw e;
+    }
+  }
   return tcp;
 }
 
