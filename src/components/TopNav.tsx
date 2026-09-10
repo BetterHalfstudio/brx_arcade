@@ -8,10 +8,14 @@ export function TopNav({
   route,
   faceVersion,
   onFaceVersion,
+  dev,
+  onToggleDev,
 }: {
   route: Route;
   faceVersion: number;
   onFaceVersion: (v: number) => void;
+  dev: boolean;
+  onToggleDev: () => void;
 }) {
   return (
     <nav className="nav">
@@ -53,7 +57,12 @@ export function TopNav({
           </div>
         )}
       </div>
-      <span className="blip">
+      {/* the blip doubles as the hidden dev-mode switch */}
+      <span
+        className={"blip" + (dev ? " dev" : "")}
+        onClick={onToggleDev}
+        title={dev ? "developer mode ON" : undefined}
+      >
         <i />
         <i />
         <i />

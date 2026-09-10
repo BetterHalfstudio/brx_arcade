@@ -185,6 +185,28 @@ button {
 .nav .blip i:nth-child(2) {
   background: var(--accent-2);
 }
+/* …and the third square is the hidden dev-mode switch state */
+.nav .blip.dev i:nth-child(3) {
+  background: var(--accent-2);
+  box-shadow: 0 0 6px -1px var(--accent-2);
+}
+/* dev-only prompt editor + the style ref actually being sent */
+.devprompt {
+  overflow: auto;
+  height: 180px;
+}
+.devref {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.devref img {
+  width: 72px;
+  image-rendering: auto;
+  border: var(--hairline) solid var(--line);
+  border-radius: 2px;
+  flex: none;
+}
 
 /* generic note (used outside .export too) */
 .note {

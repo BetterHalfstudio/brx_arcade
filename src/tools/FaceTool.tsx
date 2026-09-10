@@ -21,10 +21,14 @@ const SEG_ENGINES: { value: SegEngine; label: string }[] = [
 
 type Source = HTMLImageElement | HTMLCanvasElement;
 
-export function FaceTool({ version }: { version: number }) {
+export function FaceTool({ version, dev = false }: { version: number; dev?: boolean }) {
   const cfg = faceVersion(version);
   const isFree = cfg.bg === "segment";
-  const prompt = cfg.prompts[0]?.text ?? ""; // fixed per version (FREE has none)
+  const basePrompt = cfg.prompts[0]?.text ?? ""; // fixed per version (FREE has none)
+  // dev mode can edit the prompt live; resets when the version changes
+  const [promptText, setPromptText] = useState(basePrompt);
+  useEffect(() => setPromptText(basePrompt), [basePrompt]);
+  const prompt = promptText;
 
   const [source, setSource] = useState<Source | null>(null);
   const [result, setResult] = useState<HTMLImageElement | null>(null);
@@ -35,18 +39,18 @@ export function FaceTool({ version }: { version: number }) {
   const [sent, setSent] = useState<StylizeDebug | null>(null);
   const [flash, setFlash] = useState(false);
 
-  // levels (adjustable, applied after AUTO LIGHT)
-  const [blackPoint, setBlackPoint] = useState(40);
-  const [whitePoint, setWhitePoint] = useState(224);
-  const [gamma, setGamma] = useState(0.83);
+  // levels — BAKED defaults (dialled in by hand); only dev mode shows the UI
+  const [blackPoint, setBlackPoint] = useState(96);
+  const [whitePoint, setWhitePoint] = useState(172);
+  const [gamma, setGamma] = useState(1.27);
 
   // AUTO LIGHT — lighting normalization so different photos / Gemini renders
-  // hit the dither with the same tonal distribution. Checkbox to A/B it.
-  const [autoLight, setAutoLight] = useState(false);
-  const [alMid, setAlMid] = useState(0.5);
-  const [alClipLo, setAlClipLo] = useState(2);
-  const [alClipHi, setAlClipHi] = useState(98);
-  const [alFlatten, setAlFlatten] = useState(0.3);
+  // hit the dither with the same tonal distribution. Baked ON.
+  const [autoLight, setAutoLight] = useState(true);
+  const [alMid, setAlMid] = useState(0.52);
+  const [alClipLo, setAlClipLo] = useState(0);
+  const [alClipHi, setAlClipHi] = useState(100);
+  const [alFlatten, setAlFlatten] = useState(0);
 
   // FREE cutout — probability mask cached per (source, engine); the sliders
   // re-compose from the cache without re-running the model.
@@ -340,6 +344,26 @@ export function FaceTool({ version }: { version: number }) {
             </>
           ) : (
             <>
+              {dev && (
+                <>
+                  {/* DEV: the exact prompt sent to Gemini — editable live */}
+                  <div className="ctl__label"><span>PROMPT (DEV)</span></div>
+                  <textarea
+                    className="prompt devprompt"
+                    value={promptText}
+                    spellCheck={false}
+                    onChange={(e) => setPromptText(e.target.value)}
+                  />
+                  {/* DEV: the style reference image actually being sent */}
+                  <div className="devref">
+                    <img src={cfg.styleRef} alt="style reference" />
+                    <div className="note">
+                      STYLE REF SENT WITH EVERY STYLIZE
+                      {styleRef ? ` · ${Math.round((styleRef.data.length * 3) / 4 / 1024)}KB` : " · LOADING…"}
+                    </div>
+                  </div>
+                </>
+              )}
               <button
                 className="key teal block"
                 disabled={!source || busy}
@@ -360,32 +384,34 @@ export function FaceTool({ version }: { version: number }) {
           )}
         </div>
 
-        {/* STEP 3 — LIGHT + LEVELS */}
-        <div className={"step" + (step3Locked ? " locked" : "")}>
-          <div className="step__head">
-            <span className="step__num">3</span>
-            <span className="step__title">LEVELS</span>
+        {/* STEP 3 — LIGHT + LEVELS (baked values; the UI is dev-mode only) */}
+        {dev && (
+          <div className={"step" + (step3Locked ? " locked" : "")}>
+            <div className="step__head">
+              <span className="step__num">3</span>
+              <span className="step__title">LEVELS · DEV</span>
+            </div>
+            <Toggle label="AUTO LIGHT" on={autoLight} hot onChange={setAutoLight} />
+            {autoLight && (
+              <>
+                <Slider label="TARGET MID" value={alMid} min={0.25} max={0.75} step={0.01}
+                  fmt={(v) => v.toFixed(2)} onChange={setAlMid} />
+                <Slider label="CLIP LO" value={alClipLo} min={0} max={10} step={0.5}
+                  fmt={(v) => v.toFixed(1) + "%"} onChange={setAlClipLo} />
+                <Slider label="CLIP HI" value={alClipHi} min={90} max={100} step={0.5}
+                  fmt={(v) => v.toFixed(1) + "%"} onChange={setAlClipHi} />
+                <Slider label="FLATTEN" value={alFlatten} min={0} max={1} step={0.01}
+                  fmt={(v) => v.toFixed(2)} onChange={setAlFlatten} />
+              </>
+            )}
+            <Slider label="BLACK PT" value={blackPoint} min={0} max={254}
+              onChange={(v) => setBlackPoint(Math.min(v, whitePoint - 1))} />
+            <Slider label="WHITE PT" value={whitePoint} min={1} max={255}
+              onChange={(v) => setWhitePoint(Math.max(v, blackPoint + 1))} />
+            <Slider label="GAMMA" value={gamma} min={0.1} max={3} step={0.01}
+              fmt={(v) => v.toFixed(2)} onChange={setGamma} />
           </div>
-          <Toggle label="AUTO LIGHT" on={autoLight} hot onChange={setAutoLight} />
-          {autoLight && (
-            <>
-              <Slider label="TARGET MID" value={alMid} min={0.25} max={0.75} step={0.01}
-                fmt={(v) => v.toFixed(2)} onChange={setAlMid} />
-              <Slider label="CLIP LO" value={alClipLo} min={0} max={10} step={0.5}
-                fmt={(v) => v.toFixed(1) + "%"} onChange={setAlClipLo} />
-              <Slider label="CLIP HI" value={alClipHi} min={90} max={100} step={0.5}
-                fmt={(v) => v.toFixed(1) + "%"} onChange={setAlClipHi} />
-              <Slider label="FLATTEN" value={alFlatten} min={0} max={1} step={0.01}
-                fmt={(v) => v.toFixed(2)} onChange={setAlFlatten} />
-            </>
-          )}
-          <Slider label="BLACK PT" value={blackPoint} min={0} max={254}
-            onChange={(v) => setBlackPoint(Math.min(v, whitePoint - 1))} />
-          <Slider label="WHITE PT" value={whitePoint} min={1} max={255}
-            onChange={(v) => setWhitePoint(Math.max(v, blackPoint + 1))} />
-          <Slider label="GAMMA" value={gamma} min={0.1} max={3} step={0.01}
-            fmt={(v) => v.toFixed(2)} onChange={setGamma} />
-        </div>
+        )}
 
         {/* EXPORT */}
         <div className="export">
