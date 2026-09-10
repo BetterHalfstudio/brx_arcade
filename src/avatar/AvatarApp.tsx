@@ -58,6 +58,10 @@ export function AvatarApp() {
   const [error, setError] = useState<string | null>(null);
   const [styleRef, setStyleRef] = useState<InlineImage | null>(null);
 
+  // drag & drop upload (with a replace warning when something is on screen)
+  const [dragOver, setDragOver] = useState(false);
+  const [pendingDrop, setPendingDrop] = useState<File | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const photoRef = useRef<HTMLCanvasElement>(null);
@@ -126,17 +130,25 @@ export function AvatarApp() {
         audio: false,
       });
       streamRef.current = stream;
-      setStage("camera");
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      }, 0);
+      setStage("camera"); // the effect below attaches the stream once mounted
     } catch (e: any) {
       setError(e?.message || "camera unavailable");
     }
   }
+
+  // Attach the stream AFTER the <video> exists, and (re)play on metadata —
+  // Safari shows a black window if srcObject/play race the mount.
+  useEffect(() => {
+    if (stage !== "camera") return;
+    const v = videoRef.current;
+    const s = streamRef.current;
+    if (!v || !s) return;
+    v.srcObject = s;
+    const go = () => v.play().catch(() => {});
+    go();
+    v.addEventListener("loadedmetadata", go);
+    return () => v.removeEventListener("loadedmetadata", go);
+  }, [stage]);
 
   function capture() {
     const v = videoRef.current;
@@ -162,6 +174,20 @@ export function AvatarApp() {
       URL.revokeObjectURL(url);
     };
     img.src = url;
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (stage === "gate" || busy) return;
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    if (stage === "review" || stage === "result") {
+      setPendingDrop(file); // a photo/avatar is on screen → confirm first
+    } else {
+      stopCam();
+      loadFile(file);
+    }
   }
 
   function goBack() {
@@ -238,7 +264,15 @@ export function AvatarApp() {
 
   // ---------------------------------------------------------------------------
   return (
-    <div className="kiosk">
+    <div
+      className={"kiosk" + (dragOver ? " dragover" : "")}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (stage !== "gate") setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+    >
       <div className="kiosk__brand">
         <span className="br">BRX</span>_AVATAR
       </div>
@@ -275,10 +309,31 @@ export function AvatarApp() {
               </div>
             )}
             {stage === "camera" && (
-              <video ref={videoRef} className="kiosk__video" playsInline muted />
+              <video ref={videoRef} className="kiosk__video" playsInline muted autoPlay />
             )}
             {stage === "review" && <canvas ref={photoRef} className="kiosk__photo" />}
             {stage === "result" && <canvas ref={spriteRef} className="kiosk__sprite" />}
+
+            <div
+              className={
+                "kiosk__drop" + (stage === "review" || stage === "result" ? " replace" : "")
+              }
+            >
+              <div>
+                <div className="big">
+                  {stage === "review" || stage === "result"
+                    ? "RELEASE TO REPLACE"
+                    : "RELEASE TO LOAD"}
+                </div>
+                <div className="sub">
+                  {stage === "result"
+                    ? "⚠ OVERWRITES YOUR AVATAR"
+                    : stage === "review"
+                      ? "⚠ OVERWRITES YOUR PHOTO"
+                      : "PNG / JPG → PHOTO"}
+                </div>
+              </div>
+            </div>
           </div>
 
           {error && <div className="note err kiosk__err">⚠ {error.toUpperCase()}</div>}
@@ -341,6 +396,32 @@ export function AvatarApp() {
           e.target.value = "";
         }}
       />
+
+      {pendingDrop && (
+        <div className="modal" onClick={() => setPendingDrop(null)}>
+          <div className="modal__box" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__title">⚠ REPLACE {stage === "result" ? "AVATAR" : "PHOTO"}</div>
+            <div className="modal__body">
+              THIS WILL OVERWRITE YOUR CURRENT {stage === "result" ? "AVATAR" : "PHOTO"}. THIS
+              CANNOT BE UNDONE.
+            </div>
+            <div className="modal__actions">
+              <button className="key ghost" onClick={() => setPendingDrop(null)}>
+                CANCEL
+              </button>
+              <button
+                className="key hot"
+                onClick={() => {
+                  loadFile(pendingDrop);
+                  setPendingDrop(null);
+                }}
+              >
+                REPLACE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

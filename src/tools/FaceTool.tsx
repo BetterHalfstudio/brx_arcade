@@ -58,6 +58,10 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
 
   // FREE cutout — probability mask cached per (source, engine); the sliders
   // re-compose from the cache without re-running the model.
+  // drag & drop upload (with a replace warning when something is on screen)
+  const [dragOver, setDragOver] = useState(false);
+  const [pendingDrop, setPendingDrop] = useState<File | null>(null);
+
   const [segEngine, setSegEngine] = useState<SegEngine>("mediapipe");
   const [cut, setCut] = useState<HTMLCanvasElement | null>(null);
   const [segBusy, setSegBusy] = useState(false);
@@ -175,6 +179,19 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
     stopCam();
   }
   useEffect(() => () => stopCam(), []);
+
+  // --- drag & drop -----------------------------------------------------------
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    if (hasBase) setPendingDrop(file); // something is on screen → confirm first
+    else {
+      stopCam();
+      loadFace(file);
+    }
+  }
 
   // --- upload ----------------------------------------------------------------
   function loadFace(file: File) {
@@ -443,7 +460,15 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
       </aside>
 
       {/* PREVIEW */}
-      <div className="stage">
+      <div
+        className={"stage" + (dragOver ? " dragover" : "")}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+      >
         <div className="stage__frame face">
           <video
             ref={videoRef}
@@ -461,6 +486,15 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
               </div>
             </button>
           )}
+
+          <div className={"stage__drop" + (hasBase ? " replace" : "")}>
+            <div>
+              <div className="big">{hasBase ? "RELEASE TO REPLACE" : "RELEASE TO LOAD"}</div>
+              <div className="sub">
+                {hasBase ? "⚠ OVERWRITES THE CURRENT FACE" : "PNG / JPG → FACE"}
+              </div>
+            </div>
+          </div>
         </div>
         <div className="stage__hud" style={{ position: "absolute", left: 22, bottom: 14 }}>
           <span>
@@ -472,6 +506,33 @@ export function FaceTool({ version, dev = false }: { version: number; dev?: bool
           <span><b>VER</b> {cfg.label}{isFree ? " · $0" : ` · ${cfg.bg.toUpperCase()} BG`}</span>
         </div>
       </div>
+
+      {pendingDrop && (
+        <div className="modal" onClick={() => setPendingDrop(null)}>
+          <div className="modal__box" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__title">⚠ REPLACE IMAGE</div>
+            <div className="modal__body">
+              THIS WILL OVERWRITE YOUR CURRENT {result ? "AVATAR" : "PHOTO"}. THIS CANNOT BE
+              UNDONE.
+            </div>
+            <div className="modal__actions">
+              <button className="key ghost" onClick={() => setPendingDrop(null)}>
+                CANCEL
+              </button>
+              <button
+                className="key hot"
+                onClick={() => {
+                  stopCam();
+                  loadFace(pendingDrop);
+                  setPendingDrop(null);
+                }}
+              >
+                REPLACE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

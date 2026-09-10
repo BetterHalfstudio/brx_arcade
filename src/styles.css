@@ -1441,7 +1441,7 @@ input[type="range"].hot::-moz-range-thumb {
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch; /* fill the screen — desktop is not a squished phone */
   gap: 14px;
   padding: 16px;
   padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
@@ -1454,6 +1454,7 @@ input[type="range"].hot::-moz-range-thumb {
   letter-spacing: 0.14em;
   color: var(--text);
   padding-top: 4px;
+  align-self: flex-start; /* left-aligned heading */
 }
 .kiosk__brand .br {
   color: var(--accent-2);
@@ -1499,10 +1500,10 @@ input[type="range"].hot::-moz-range-thumb {
   border-color: var(--col-teal-deep);
 }
 
-/* stage area: photo / video / sprite */
+/* stage area: photo / video / sprite — fills the viewport at any size */
 .kiosk__stagearea {
   flex: 1;
-  width: min(560px, 100%);
+  width: 100%;
   min-height: 0;
   display: flex;
   align-items: center;
@@ -1512,21 +1513,29 @@ input[type="range"].hot::-moz-range-thumb {
   background: #050505;
   overflow: hidden;
 }
-.kiosk__video,
 .kiosk__photo {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
   display: block;
 }
+/* explicit box so Safari never collapses the video pre-metadata; mirrored
+   like a selfie preview (the captured photo itself stays unmirrored) */
+.kiosk__video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  transform: scaleX(-1);
+}
+/* the sprite is tiny (≈144px): let object-fit scale it up as large as the box
+   allows while PRESERVING aspect — never stretch the pixels */
 .kiosk__sprite {
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   image-rendering: pixelated;
   display: block;
-  /* the sprite is tiny (≈144px) — let it scale up to fill */
-  width: auto;
-  height: 96%;
 }
 .kiosk__hint {
   text-align: center;
@@ -1544,12 +1553,15 @@ input[type="range"].hot::-moz-range-thumb {
   letter-spacing: var(--letter-wide);
 }
 .kiosk__err {
-  width: min(560px, 100%);
+  width: min(640px, 100%);
+  margin: 0 auto;
 }
 
-/* action bar: one big main button + one small side button */
+/* action bar: one big main button + one small side button (kiosk-sized,
+   centered under the full-width stage) */
 .kiosk__actions {
-  width: min(560px, 100%);
+  width: min(640px, 100%);
+  margin: 0 auto;
   display: flex;
   gap: 10px;
   align-items: stretch;
@@ -1565,4 +1577,42 @@ input[type="range"].hot::-moz-range-thumb {
   min-height: 56px;
   font-size: 18px;
   flex: none;
+}
+
+/* kiosk drag & drop overlay (mirrors .stage__drop) */
+.kiosk__stagearea {
+  position: relative;
+}
+.kiosk__drop {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  border: 1px dashed transparent;
+  border-radius: 4px;
+  transition: opacity 0.12s ease;
+  background: rgba(41, 167, 175, 0.06);
+}
+.kiosk.dragover .kiosk__drop {
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.kiosk.dragover .kiosk__drop.replace {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+  background: rgba(239, 74, 32, 0.08);
+}
+.kiosk__drop .big {
+  font-size: 14px;
+  letter-spacing: var(--letter-wide);
+}
+.kiosk__drop .sub {
+  font-size: var(--fs-micro);
+  margin-top: 6px;
+  color: var(--text-mute);
 }
