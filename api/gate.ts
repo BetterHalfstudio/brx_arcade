@@ -9,6 +9,6 @@ export default async function handler(req: any, res: any) {
     return;
   }
   const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
-  const expected = process.env.AVATAR_PASSWORD || "BRX2026";
+  const expected = process.env.AVATAR_PASSWORD || "Hyperagent";
   res.status(200).json({ ok: String(body.pass || "") === expected });
 }

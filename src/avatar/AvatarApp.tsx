@@ -22,7 +22,7 @@ import {
 
 const V2 = faceVersion(2);
 const PASS_KEY = "brx:avatar:ok";
-const PASS_FALLBACK = "BRX2026"; // used when the api route is unreachable (dev)
+const PASS_FALLBACK = "Hyperagent"; // used when the api route is unreachable (dev)
 
 const BAKED = {
   targetH: FACE_TARGET_H,
