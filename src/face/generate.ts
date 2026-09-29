@@ -104,26 +104,73 @@ export function spriteInk(sprite: HTMLCanvasElement): number {
   return subject ? dark / subject : 0;
 }
 
-// The band the known-good outputs live in (share of black within the figure).
-const INK_MIN = 0.26;
-const INK_MAX = 0.62;
-const INK_TARGET = 0.44;
+/**
+ * Dark-ink fraction measured on the FACE ZONE only — the central-upper slab of
+ * the subject's bounding box (forehead → mouth of a centred bust; the prompt
+ * guarantees the framing). Whole-sprite ink is dominated by hair and clothing,
+ * which vary hugely per person: a dark-haired subject reads as "lots of ink",
+ * so a whole-sprite search LOWERS the threshold and blows out the face. Scoping
+ * the measurement to the face keeps adaptation about facial detail.
+ */
+export function faceZoneDark(sprite: HTMLCanvasElement): number {
+  const ctx = sprite.getContext("2d", { willReadFrequently: true })!;
+  const { width: w, height: h } = sprite;
+  const d = ctx.getImageData(0, 0, w, h).data;
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] === 0) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return 0;
+  const bw = x1 - x0 + 1;
+  const bh = y1 - y0 + 1;
+  const cx = (x0 + x1) / 2;
+  const zx0 = Math.round(cx - 0.24 * bw);
+  const zx1 = Math.round(cx + 0.24 * bw);
+  const zy0 = Math.round(y0 + 0.16 * bh);
+  const zy1 = Math.round(y0 + 0.6 * bh);
+  let subject = 0;
+  let dark = 0;
+  for (let y = zy0; y <= zy1; y++) {
+    for (let x = zx0; x <= zx1; x++) {
+      const i = (y * w + x) * 4;
+      if (d[i + 3] === 0) continue;
+      subject++;
+      if (d[i] < 128) dark++;
+    }
+  }
+  return subject ? dark / subject : 0;
+}
+
+// Face-zone ink band: enough dither to model the face, not so much it goes
+// muddy. Below MIN = highlights blown out; above MAX = too dark.
+const FACE_INK_MIN = 0.18;
+const FACE_INK_MAX = 0.5;
+const FACE_INK_TARGET = 0.3;
 const EDGE_LIMIT = 0.04; // >4% of an edge covered = the silhouette is open
 const BORDER_BG_LIMIT = 0.1; // >10% of the top ring opaque = chroma key failed
 
-/** Re-pick the 1-bit threshold when the default lands outside the ink band —
- *  rescues washed-out AND too-dark renders without another generation. */
+/** Re-pick the 1-bit threshold when the FACE lands outside the detail band —
+ *  rescues blown-out (too-light) AND too-dark faces without another
+ *  generation. Face-zone dark rises monotonically with the threshold. */
 export function adaptThreshold(cut: Src, baked: FaceOpts): number {
   const measure = (thr: number) =>
-    spriteInk(facePixelArt(cut, { ...baked, bg: "none", threshold: thr }));
+    faceZoneDark(facePixelArt(cut, { ...baked, bg: "none", threshold: thr }));
   const base = measure(baked.threshold);
-  if (base >= INK_MIN && base <= INK_MAX) return baked.threshold;
-  // ink rises monotonically with threshold — binary search to the target
+  if (base >= FACE_INK_MIN && base <= FACE_INK_MAX) return baked.threshold;
   let lo = 40;
-  let hi = 215;
-  for (let i = 0; i < 8; i++) {
+  let hi = 220;
+  for (let i = 0; i < 9; i++) {
     const mid = (lo + hi) / 2;
-    if (measure(mid) < INK_TARGET) lo = mid;
+    if (measure(mid) < FACE_INK_TARGET) lo = mid;
     else hi = mid;
   }
   return Math.round((lo + hi) / 2);
